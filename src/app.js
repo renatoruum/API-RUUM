@@ -2,14 +2,17 @@ import dotenv from "dotenv";
 dotenv.config();
 
 import express from "express";
-import chatgptRoute from "./routes/sendChatGpt.js";
 import fetch from "node-fetch"; 
+//Routes
+import chatgptRoute from "./routes/sendChatGpt.js";
+import importXmlRoute from "./routes/importXml.js";
 
 const app = express();
 app.use(express.json());
 
 // Rota para o ChatGPT
 app.use("/api", chatgptRoute);
+app.use("/api", importXmlRoute);
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
