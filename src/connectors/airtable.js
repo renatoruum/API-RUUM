@@ -31,6 +31,7 @@ export async function getDataFromAirtable() {
 export async function upsertImovelInAirtable(imovel) {
     const tableName = "Imobiliaria X";
     const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(process.env.AIRTABLE_BASE_ID);
+    const client = "Imobiliaria X";
 
     // Busca registro existente pelo campo 'codigo'
     const records = await base(tableName)
@@ -41,6 +42,7 @@ export async function upsertImovelInAirtable(imovel) {
         .firstPage();
 
     const fields = {
+        Clients: client,
         Codigo: imovel.codigo,
         Tipo: imovel.tipo,
         Finalidade: imovel.finalidade,
