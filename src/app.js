@@ -2,17 +2,21 @@ import dotenv from "dotenv";
 dotenv.config();
 
 import express from "express";
+import cors from "cors";
 import fetch from "node-fetch"; 
 //Routes
 import chatgptRoute from "./routes/sendChatGpt.js";
 import importXmlRoute from "./routes/importXml.js";
+import updateImagesAirtableRoute from "./routes/updateImagesAirtable.js";
 
 const app = express();
+app.use(cors());
 app.use(express.json());
 
 // Rota para o ChatGPT
 app.use("/api", chatgptRoute);
 app.use("/api", importXmlRoute);
+app.use("/api", updateImagesAirtableRoute);
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));

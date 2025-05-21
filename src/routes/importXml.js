@@ -8,7 +8,7 @@ router.post("/import-xml", express.text({ type: "application/xml" }), async (req
   try {
     const imoveis = await parseImoveisXml(req.body);
     for (const imovel of imoveis) {
-      await upsertImovelInAirtable(imovel); // Implemente essa função para criar/atualizar no Airtable
+      await upsertImovelInAirtable(imovel); 
     }
     res.json({ success: true, count: imoveis.length });
   } catch (error) {

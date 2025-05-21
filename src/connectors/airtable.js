@@ -16,6 +16,10 @@ const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(process
  * Cria ou atualiza um imóvel no Airtable.
  * @param {Object} imovel - Objeto do imóvel vindo do XML.
  */
+/**
+ * Atualiza ou insere imagens na tabela "Images" do Airtable.
+ * @param {Array} imagesArray - Array de objetos com dados das imagens.
+ */
 
 export async function getDataFromAirtable() {
     const records = await base(process.env.AIRTABLE_TABLE_NAME).select({}).firstPage();
@@ -33,7 +37,6 @@ export async function upsertImovelInAirtable(imovel) {
     const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(process.env.AIRTABLE_BASE_ID);
     const client = "Imobiliaria X";
 
-    // Busca registro existente pelo campo 'codigo'
     const records = await base(tableName)
         .select({
             filterByFormula: `{codigo} = '${imovel.codigo}'`,
@@ -42,7 +45,7 @@ export async function upsertImovelInAirtable(imovel) {
         .firstPage();
 
     const fields = {
-        Clients: client,
+        Client: client,
         Codigo: imovel.codigo,
         Tipo: imovel.tipo,
         Finalidade: imovel.finalidade,
@@ -69,5 +72,42 @@ export async function upsertImovelInAirtable(imovel) {
         // Cria novo registro
         const created = await base(tableName).create(fields);
         return { created: true, id: created.id };
+    }
+}
+
+export async function upsertImagesInAirtable(imagesArray) {
+    const tableName = "Images API";
+    const baseInstance = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(process.env.AIRTABLE_BASE_ID);
+    const client = "Imobiliaria X";
+
+    for (const img of imagesArray) {
+        console.log("Processing image:", img);
+        // Busca registro existente pelo campo 'imgUrl'
+        const records = await baseInstance(tableName)
+            .select({
+                filterByFormula: `{Image} = '${img.imgUrl}'`,
+                maxRecords: 1,
+            })
+            .firstPage();
+
+
+        const fields = {
+            Image: img.imgUrl,
+            Tipo: img.tipo,
+            Estilo: img.estilo,
+            Acabamento: img.acabamento,
+            Observacoes: img.observacoes,
+            Retirar: img.retirar,
+            //Codigo: img.codigo,
+            Client: client,
+        };
+
+        if (records.length > 0) {
+            // Atualiza registro existente
+            await baseInstance(tableName).update(records[0].id, fields);
+        } else {
+            // Cria novo registro
+            await baseInstance(tableName).create(fields);
+        }
     }
 }
