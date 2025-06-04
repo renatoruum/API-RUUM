@@ -1,6 +1,6 @@
 import express from "express";
 import { parseImoveisXml } from "../connectors/xmlParser.js";
-import { upsertImovelInAirtable } from "../connectors/airtable.js";
+import { upsetImovelInAirtable } from "../connectors/airtable.js";
 
 const router = express.Router();
 
@@ -8,7 +8,7 @@ router.post("/import-xml", express.text({ type: "application/xml" }), async (req
   try {
     const imoveis = await parseImoveisXml(req.body);
     for (const imovel of imoveis) {
-      await upsertImovelInAirtable(imovel); 
+      await upsetImovelInAirtable(imovel); 
     }
     res.json({ success: true, count: imoveis.length });
   } catch (error) {

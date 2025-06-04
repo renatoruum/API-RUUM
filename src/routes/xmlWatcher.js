@@ -1,7 +1,7 @@
 import express from "express";
 import fetch from "node-fetch";
 import { parseImoveisXml } from "../connectors/xmlParser.js";
-import { upsertImovelInAirtable } from "../connectors/airtable.js";
+import { upsetImovelInAirtable } from "../connectors/airtable.js";
 
 const router = express.Router();
 
@@ -23,9 +23,10 @@ router.post("/start-xmlwatcher", async (req, res) => {
       const response = await fetch(xmlUrl);
       if (!response.ok) throw new Error("Failed to fetch XML");
       const xmlString = await response.text();
+      console.log("XML início:", xmlString.slice(0, 6000));
       const imoveis = await parseImoveisXml(xmlString);
       for (const imovel of imoveis) {
-        await upsertImovelInAirtable(imovel);
+        await upsetImovelInAirtable(imovel);
       }
       console.log(`[Observer] Importação concluída: ${imoveis.length} imóveis`);
     } catch (error) {
@@ -35,7 +36,7 @@ router.post("/start-xmlwatcher", async (req, res) => {
 
   // Executa imediatamente e depois a cada X minutos
   await fetchAndImport();
-  observerInterval = setInterval(fetchAndImport, intervalMinutes * 60 * 1000);
+  observerInterval = setInterval(fetchAndImport, 24 * 60 * 60 * 1000);
 
   res.json({ success: true, message: `Observador iniciado para ${xmlUrl} a cada ${intervalMinutes} minutos.` });
 });

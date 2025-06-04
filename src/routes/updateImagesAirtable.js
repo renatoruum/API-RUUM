@@ -1,5 +1,5 @@
 import express from "express";
-import { upsertImagesInAirtable } from "../connectors/airtable.js";
+import { upsetImagesInAirtable } from "../connectors/airtable.js";
 
 const router = express.Router();
 
@@ -10,7 +10,7 @@ router.post("/update-images-airtable", async (req, res) => {
       return res.status(400).json({ success: false, message: "Body must be a non-empty array of images" });
     }
 
-    await upsertImagesInAirtable(imagesArray);
+    await upsetImagesInAirtable(imagesArray);
     res.json({ success: true, message: "Images updated/created in Airtable" });
   } catch (error) {
     console.error("Error updating images in Airtable:", error);

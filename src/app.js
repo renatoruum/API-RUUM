@@ -8,6 +8,7 @@ import fetch from "node-fetch";
 import chatgptRoute from "./routes/sendChatGpt.js";
 import importXmlRoute from "./routes/importXml.js";
 import updateImagesAirtableRoute from "./routes/updateImagesAirtable.js";
+import xmlWatcherRoute from "./routes/xmlWatcher.js";
 
 const app = express();
 app.use(cors());
@@ -17,6 +18,7 @@ app.use(express.json());
 app.use("/api", chatgptRoute);
 app.use("/api", importXmlRoute);
 app.use("/api", updateImagesAirtableRoute);
+app.use("/api", xmlWatcherRoute);
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));

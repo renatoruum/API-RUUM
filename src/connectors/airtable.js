@@ -32,36 +32,64 @@ export async function getDataFromAirtable() {
     return formattedData;
 }
 
-export async function upsertImovelInAirtable(imovel) {
-    const tableName = "Imobiliaria X";
+export async function upsetImovelInAirtable(imovel) {
+    const tableName = "Teste ACasa7";
     const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(process.env.AIRTABLE_BASE_ID);
-    const client = "Imobiliaria X";
+    const client = "A Casa 7";
+
+    const isKenlo = !!imovel.CodigoImovel;
+
+    const codigo = isKenlo ? imovel.CodigoImovel : imovel.codigo;
+    const tipo = isKenlo ? imovel.TipoImovel : imovel.tipo;
+    const finalidade = isKenlo ? imovel.Finalidade : imovel.finalidade;
+    const valor = isKenlo ? imovel.PrecoVenda : imovel.valor;
+    const bairro = isKenlo ? imovel.Bairro : imovel.bairro;
+    const cidade = isKenlo ? imovel.Cidade : imovel.cidade;
+    const uf = isKenlo ? imovel.Estado : imovel.uf;
+    const area_util = isKenlo ? imovel.AreaUtil : imovel.area_util;
+    const quartos = isKenlo ? imovel.QtdDormitorios : imovel.quartos;
+    const suites = isKenlo ? imovel.QtdSuites || imovel.suites : imovel.suites;
+    const banheiros = isKenlo ? imovel.QtdBanheiros : imovel.banheiros;
+    const vagas = isKenlo ? imovel.QtdVagas : imovel.vagas;
+    const descricao = isKenlo ? imovel.Observacao || imovel.TituloImovel : imovel.descricao;
+
+    let fotos = "";
+    if (isKenlo && imovel.Fotos && imovel.Fotos.Foto) {
+        if (Array.isArray(imovel.Fotos.Foto)) {
+            fotos = imovel.Fotos.Foto.map(f => f.URLArquivo).join('\n');
+        } else if (imovel.Fotos.Foto.URLArquivo) {
+            fotos = imovel.Fotos.Foto.URLArquivo;
+        }
+    } else if (imovel.fotos?.foto) {
+        fotos = Array.isArray(imovel.fotos.foto)
+            ? imovel.fotos.foto.join('\n')
+            : imovel.fotos.foto;
+    }
 
     const records = await base(tableName)
         .select({
-            filterByFormula: `{codigo} = '${imovel.codigo}'`,
+            filterByFormula: `{Codigo} = '${codigo}'`,
             maxRecords: 1,
         })
         .firstPage();
 
     const fields = {
         Client: client,
-        Codigo: imovel.codigo,
-        Tipo: imovel.tipo,
-        Finalidade: imovel.finalidade,
-        Valor: Number(imovel.valor),
-        Bairro: imovel.bairro,
-        Cidade: imovel.cidade,
-        UF: imovel.uf,
-        Area_util: Number(imovel.area_util),
-        Quartos: Number(imovel.quartos),
-        Suites: Number(imovel.suites),
-        Banheiros: Number(imovel.banheiros),
-        Vagas: Number(imovel.vagas),
-        Descricao: imovel.descricao,
-        Fotos_URLs: Array.isArray(imovel.fotos?.foto)
-            ? imovel.fotos.foto.join('\n')
-            : imovel.fotos?.foto || '',
+        Codigo: codigo,
+        Tipo: tipo,
+        Finalidade: finalidade,
+        Valor: Number(valor),
+        Bairro: bairro,
+        Cidade: cidade,
+        UF: uf,
+        Area_util: Number(area_util),
+        Quartos: Number(quartos),
+        Suites: Number(suites),
+        Banheiros: Number(banheiros),
+        Vagas: Number(vagas),
+        Descricao: descricao,
+        Fotos: fotos ? fotos : "",
+        Fotos_URLs: fotos ? fotos : "",
     };
 
     if (records.length > 0) {
@@ -75,31 +103,36 @@ export async function upsertImovelInAirtable(imovel) {
     }
 }
 
-export async function upsertImagesInAirtable(imagesArray) {
-    const tableName = "Images API";
+export async function upsetImagesInAirtable(imagesArray) {
+    const tableName = "Images";
     const baseInstance = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(process.env.AIRTABLE_BASE_ID);
-    const client = "Imobiliaria X";
+    const email = "galia@acasa7.com.br"
+    const clientId = "recZqOfnZXwqbbVZY";
+    const invoiceId = "reclDmUiMoLKzRe8k"
+    const userId = "recMjeDtB77Ijl9BL"
 
     for (const img of imagesArray) {
         console.log("Processing image:", img);
         // Busca registro existente pelo campo 'imgUrl'
         const records = await baseInstance(tableName)
             .select({
-                filterByFormula: `{Image} = '${img.imgUrl}'`,
+                filterByFormula: `{IMAGE_CRM} = '${img.imgUrl}'`,
                 maxRecords: 1,
             })
             .firstPage();
 
-
         const fields = {
-            Image: img.imgUrl,
-            Tipo: img.tipo,
-            Estilo: img.estilo,
-            Acabamento: img.acabamento,
-            Observacoes: img.observacoes,
-            Retirar: img.retirar,
-            //Codigo: img.codigo,
-            Client: client,
+            Invoices: [invoiceId],
+            Clients: [clientId],
+            ["Property's URL"]: img.propertyUrl || '',
+            Decluttering: img.retirar,
+            ["Image Workflow"]: "SmartStage",
+            ["INPUT IMAGE"]: img.imgUrl ? [{ url: img.imgUrl }] : [],
+            ["Room Type"]: img.tipo,
+            ["Owner Email"]: email,
+            //["Data de submissão"]: new Date().toISOString(),
+            Users: [userId],
+            ["Client Internal Code"]: img.codigo || '',
         };
 
         if (records.length > 0) {
