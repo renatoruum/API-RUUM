@@ -1,7 +1,7 @@
 import express from "express";
 import fetch from "node-fetch";
 import { parseImoveisXml } from "../connectors/xmlParser.js";
-import { upsetImovelInAirtable } from "../connectors/airtable.js";
+import { syncImoveisWithAirtable } from "../connectors/airtable.js";
 
 const router = express.Router();
 
@@ -26,7 +26,7 @@ router.post("/start-xmlwatcher", async (req, res) => {
       console.log("XML início:", xmlString.slice(0, 6000));
       const imoveis = await parseImoveisXml(xmlString);
       for (const imovel of imoveis) {
-        await upsetImovelInAirtable(imovel);
+        await syncImoveisWithAirtable(imovel);
       }
       console.log(`[Observer] Importação concluída: ${imoveis.length} imóveis`);
     } catch (error) {

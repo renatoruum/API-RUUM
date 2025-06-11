@@ -33,7 +33,7 @@ export async function getDataFromAirtable() {
 }
 
 export async function upsetImovelInAirtable(imovel) {
-    const tableName = "Teste ACasa7";
+    const tableName = "ACasa7";
     const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(process.env.AIRTABLE_BASE_ID);
     const client = "A Casa 7";
 
@@ -141,6 +141,50 @@ export async function upsetImagesInAirtable(imagesArray) {
         } else {
             // Cria novo registro
             await baseInstance(tableName).create(fields);
+        }
+    }
+}
+
+export async function syncImoveisWithAirtable(imoveisFromXml) {
+    const tableName = "ACasa7";
+    const baseInstance = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(process.env.AIRTABLE_BASE_ID);
+
+    // Busca todos os imóveis atuais do Airtable
+    const airtableRecords = await baseInstance(tableName).select({}).all();
+    const airtableMap = {};
+    airtableRecords.forEach(record => {
+        airtableMap[record.fields.Codigo] = { id: record.id, fields: record.fields };
+    });
+
+    // Cria um Set com todos os códigos do XML
+    const xmlCodigos = new Set(imoveisFromXml.map(imovel => imovel.codigo || imovel.CodigoImovel));
+
+    // Adiciona/Atualiza imóveis do XML
+    for (const imovel of imoveisFromXml) {
+        const codigo = imovel.CodigoImovel || imovel.codigo;
+        const fields = {
+            // ...monte os campos igual já faz...
+            Codigo: codigo,
+            // ...outros campos...
+        };
+
+        if (!airtableMap[codigo]) {
+            // Adicionar novo imóvel
+            await baseInstance(tableName).create(fields);
+        } else {
+            // Atualizar apenas se houver diferença
+            const currentFields = airtableMap[codigo].fields;
+            const hasDiff = Object.keys(fields).some(key => fields[key] != currentFields[key]);
+            if (hasDiff) {
+                await baseInstance(tableName).update(airtableMap[codigo].id, fields);
+            }
+        }
+    }
+
+    // Remover imóveis que estão no Airtable mas não estão mais no XML
+    for (const codigo in airtableMap) {
+        if (!xmlCodigos.has(codigo)) {
+            await baseInstance(tableName).destroy(airtableMap[codigo].id);
         }
     }
 }
