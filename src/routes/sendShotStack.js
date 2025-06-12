@@ -26,6 +26,8 @@ router.post("/send-shotstack", async (req, res) => {
       return res.status(500).json({ success: false, message: "No render ID returned from Shotstack" });
     }
 
+    console.log("Render ID recebido do Shotstack:", renderId);
+
     // 2. Retorna o ID para o cliente
     res.json({ success: true, id: renderId });
 
@@ -38,7 +40,7 @@ router.post("/send-shotstack", async (req, res) => {
 
 // Endpoint para consultar status e URL do vídeo renderizado
 router.get("/shotstack-status/:id", async (req, res) => {
-    console.log(">>> Entrou na rota /shotstack-status/:id");
+  console.log(">>> Entrou na rota /shotstack-status/:id");
   try {
     const { id } = req.params;
     console.log("Consultando status do Shotstack para ID:", id);
