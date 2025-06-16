@@ -1,5 +1,5 @@
-import express from "express";
 import { upsetImagesInAirtable } from "../connectors/airtable.js";
+import express from "express";
 
 const router = express.Router();
 

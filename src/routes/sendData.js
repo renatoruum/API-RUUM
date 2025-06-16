@@ -1,6 +1,6 @@
-import express from "express";
 import { getDataFromAirtable } from "../connectors/airtable.js";
 import { sendToChatGPT } from "../llm/chatgpt.js";
+import express from "express";
 
 const router = express.Router();
 

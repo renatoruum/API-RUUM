@@ -3,62 +3,105 @@ dotenv.config();
 
 import express from "express";
 import cors from "cors";
-import fetch from "node-fetch"; 
-//Routes
-import chatgptRoute from "./routes/sendChatGpt.js";
-import importXmlRoute from "./routes/importXml.js";
-import updateImagesAirtableRoute from "./routes/updateImagesAirtable.js";
-import xmlWatcherRoute from "./routes/xmlWatcher.js";
-import sendShotStackRoute from "./routes/sendShotStack.js";
 
 const app = express();
-app.use((req, res, next) => {
-  console.log("Requisição recebida:", req.method, req.url);
-  next();
-});
+
+// Basic middleware
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
 
-// Rota para o ChatGPT
-app.use("/api", chatgptRoute);
-app.use("/api", importXmlRoute);
-app.use("/api", updateImagesAirtableRoute);
-app.use("/api", xmlWatcherRoute);
-app.use("/api", sendShotStackRoute);
+// Logging
+app.use((req, res, next) => {
+    console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
+    next();
+});
 
+// Auth middleware
+const authenticateToken = (req, res, next) => {
+    const authHeader = req.headers['authorization'];
+    const token = authHeader && authHeader.split(' ')[1]; // Bearer TOKEN
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
-
-// Endpoint /webhook
-app.post("/webhook", async (req, res) => {
-    try {
-        console.log("Data received:", req.body);
-
-        const { image_url, room_type, style } = req.body;
-
-        // Validação básica
-        if (!image_url || !room_type || !style) {
-            return res.status(400).json({ success: false, message: "Missing required fields" });
-        }
-
-        // Faz uma requisição interna para a rota /api/chatgpt
-        const chatGPTResponse = await fetch("http://localhost:3000/api/chatgpt", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ image_url, room_type, style }),
-        });
-
-        const chatGPTData = await chatGPTResponse.json();
-
-        // Retorna a resposta ao cliente (Airtable)
-        res.status(200).json({
-            success: true,
-            message: "Data processed successfully",
-            chatGPTResponse: chatGPTData,
-        });
-    } catch (error) {
-        console.error("Error in /webhook:", error);
-        res.status(500).json({ success: false, message: "Internal Server Error" });
+    // Allow health check without auth
+    if (req.path === '/health' || req.path === '/') {
+        return next();
     }
+
+    if (!token) {
+        return res.status(401).json({ 
+            success: false, 
+            message: 'Access token required' 
+        });
+    }
+
+    // Check if token matches our API key
+    const validToken = process.env.API_TOKEN || 'your-secret-api-token-here';
+    
+    if (token !== validToken) {
+        return res.status(403).json({ 
+            success: false, 
+            message: 'Invalid token' 
+        });
+    }
+
+    next();
+};
+
+// Apply auth middleware to all routes except health check
+app.use(authenticateToken);
+
+// Health check
+app.get('/health', (req, res) => {
+    console.log('Health check called');
+    res.status(200).json({ 
+        status: 'OK', 
+        timestamp: new Date().toISOString(),
+        env: process.env.NODE_ENV || 'development',
+        auth: 'Token required for API endpoints'
+    });
+});
+
+// Root endpoint
+app.get('/', (req, res) => {
+    res.status(200).json({ 
+        message: 'API Ruum is running!',
+        timestamp: new Date().toISOString(),
+        endpoints: [
+            'GET /health - Health check (no auth)',
+            'POST /api/chatgpt - ChatGPT Vision API (requires Bearer token)'
+        ],
+        auth: 'Use Bearer token in Authorization header'
+    });
+});
+
+// Import routes only after basic setup
+try {
+    const { default: chatgptRoute } = await import("./routes/sendChatGpt.js");
+    app.use("/api", chatgptRoute);
+    console.log("✅ ChatGPT route loaded");
+} catch (error) {
+    console.error("❌ Failed to load ChatGPT route:", error.message);
+}
+
+// Error handling
+app.use((err, req, res, next) => {
+    console.error('Error:', err);
+    res.status(500).json({ error: 'Internal Server Error' });
+});
+
+const PORT = process.env.PORT || 8080;
+
+const server = app.listen(PORT, '0.0.0.0', () => {
+    console.log(`🚀 Server running on port ${PORT}`);
+    console.log(`🏥 Health: http://0.0.0.0:${PORT}/health`);
+    console.log(`🔐 API Token: ${process.env.API_TOKEN || 'NOT SET'}`);
+});
+
+server.on('error', (error) => {
+    console.error('❌ Server error:', error);
+    process.exit(1);
+});
+
+process.on('SIGTERM', () => {
+    console.log('SIGTERM received');
+    server.close(() => process.exit(0));
 });

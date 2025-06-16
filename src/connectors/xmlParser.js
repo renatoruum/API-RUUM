@@ -1,4 +1,3 @@
-import { parseStringPromise } from "xml2js";
 
 export async function parseImoveisXml(xmlString) {
   const result = await parseStringPromise(xmlString, { explicitArray: false, trim: true, mergeAttrs: true });

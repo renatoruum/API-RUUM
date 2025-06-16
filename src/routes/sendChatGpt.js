@@ -1,7 +1,11 @@
 import express from "express";
-import { sendToChatGPT } from "../llm/chatgpt.js";
+import OpenAI from "openai";
 
 const router = express.Router();
+
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+});
 
 router.post("/chatgpt", async (req, res) => {
   try {
@@ -10,23 +14,43 @@ router.post("/chatgpt", async (req, res) => {
     if (!image_url || !room_type || !style) {
       return res.status(400).json({
         success: false,
-        message: "Missing required fields: image_url, room_type, or style",
+        message: "Missing required fields: image_url, room_type, style"
       });
     }
 
-    // Call the ChatGPT function
-    const chatGPTResponse = await sendToChatGPT({ image_url, room_type, style });
-
-    res.status(200).json({
-      success: true,
-      message: "ChatGPT processed successfully",
-      data: chatGPTResponse,
+    const response = await openai.chat.completions.create({
+      model: "gpt-4-vision-preview",
+      messages: [
+        {
+          role: "user",
+          content: [
+            {
+              type: "text",
+              text: `Analyze this ${room_type} image and suggest ${style} style improvements. Provide specific recommendations for furniture, colors, and decor.`
+            },
+            {
+              type: "image_url",
+              image_url: {
+                url: image_url
+              }
+            }
+          ]
+        }
+      ],
+      max_tokens: 500
     });
+
+    res.json({
+      success: true,
+      data: response.choices[0].message.content
+    });
+
   } catch (error) {
-    console.error("Error in ChatGPT route:", error);
+    console.error("ChatGPT API Error:", error);
     res.status(500).json({
       success: false,
-      message: "Internal Server Error",
+      message: "Error processing request",
+      error: error.message
     });
   }
 });

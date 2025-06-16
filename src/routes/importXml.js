@@ -1,6 +1,6 @@
-import express from "express";
 import { parseImoveisXml } from "../connectors/xmlParser.js";
 import { syncImoveisWithAirtable } from "../connectors/airtable.js";
+import express from "express";
 
 const router = express.Router();
 

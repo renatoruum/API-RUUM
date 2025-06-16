@@ -1,8 +1,8 @@
-// Constants
-const API_ENDPOINT = "https://b6fb-191-205-248-153.ngrok-free.app/webhook";
+const API_ENDPOINT = "https://apiruum-2cpzkgiiia-uc.a.run.app/api/chatgpt";
+const API_TOKEN = "ruum-api-secure-token-2024"; // Mesmo token do .env
 const TABLE_NAME = "DEVELOPMENT Test API";
-const FIELD_IMAGE_URL = "URL imagem input";  // Field to store the generated URL
-const FIELD_ATTACHMENT = "Imagem input";  // Attachment field
+const FIELD_IMAGE_URL = "URL imagem input";
+const FIELD_ATTACHMENT = "Imagem input";
 const FIELD_ROOM_TYPE = "Ambiente";
 
 // Utility: Fetch record from Airtable
@@ -52,7 +52,7 @@ async function processImage(input) {
             throw new Error("No attachments found in the record.");
         }
 
-        const imageUrl = attachments[0].url; // Extract the Expiring Download URL
+        const imageUrl = attachments[0].url;
         console.log("Generated Expiring Download URL:", imageUrl);
 
         // Update the record with the generated URL
@@ -62,23 +62,26 @@ async function processImage(input) {
 
         console.log("URL successfully saved to Airtable.");
 
-        // Immediately proceed with the API request using the generated URL
+        // Validate and proceed
         validateFields(imageUrl, roomType);
 
         console.log(`Final Image URL: ${imageUrl}`);
         console.log(`Fetched Room Type: ${roomType}`);
 
-        // Prepare API request
+        // Prepare API request with token authentication
         const headers = {
             "Content-Type": "application/json",
+            "Authorization": `Bearer ${API_TOKEN}` // Adicionar token aqui
         };
 
         const body = JSON.stringify({
             image_url: imageUrl,
-            room_type: roomType.toLowerCase(), // Ensure room type matches API expected format
-            style: "standard",
-            wait_for_completion: false,
+            room_type: roomType.toLowerCase(),
+            style: "modern"
         });
+
+        console.log("Calling API:", API_ENDPOINT);
+        console.log("Using token:", API_TOKEN);
 
         // Send the API request
         const response = await fetch(API_ENDPOINT, {
@@ -89,9 +92,10 @@ async function processImage(input) {
 
         if (response.ok) {
             const data = await response.json();
-            console.log("API Response:", data);
+            console.log("✅ API Response:", data);
         } else {
             const errorText = await response.text();
+            console.error(`❌ API Request Failed: ${response.status} - ${errorText}`);
             throw new Error(`API Request Failed: ${response.status} - ${errorText}`);
         }
     } catch (error) {

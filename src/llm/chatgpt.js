@@ -1,10 +1,10 @@
 import axios from "axios";
 import fs from "fs";
-import fetch from "node-fetch";
 import tmp from "tmp";
 import sharp from "sharp";
 import FormData from "form-data";
 import dotenv from "dotenv";
+import fetch from "node-fetch";
 dotenv.config();
 
 export async function sendToChatGPT({ image_url, room_type, style }) {

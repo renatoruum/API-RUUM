@@ -1,5 +1,5 @@
-import Airtable from "airtable";
 import dotenv from "dotenv";
+import Airtable from 'airtable';
 dotenv.config();
 
 if (!process.env.AIRTABLE_API_KEY) {

@@ -1,28 +1,26 @@
-# Use Node.js 18 Alpine (imagem leve)
-FROM node:18-alpine
+FROM node:18-slim
 
-# Definir diretório de trabalho
 WORKDIR /app
 
-# Copiar arquivos de dependências
+# Install basic dependencies
+RUN apt-get update && apt-get install -y \
+    python3 \
+    make \
+    g++ \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy package files
 COPY package*.json ./
 
-# Instalar dependências de produção
+# Install dependencies
 RUN npm ci --only=production
 
-# Copiar código fonte
-COPY src/ ./src/
+# Copy source code
+COPY . .
 
-# Criar usuário não-root para segurança
-RUN addgroup -g 1001 -S nodejs
-RUN adduser -S nextjs -u 1001
-
-# Mudar ownership dos arquivos
-RUN chown -R nextjs:nodejs /app
-USER nextjs
-
-# Expor porta (Cloud Run usa 8080 por padrão)
+# Expose port
 EXPOSE 8080
 
-# Comando de inicialização
+# Simple start command
 CMD ["npm", "start"]
