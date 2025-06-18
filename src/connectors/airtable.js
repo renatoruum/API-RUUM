@@ -1,5 +1,5 @@
+import Airtable from "airtable";
 import dotenv from "dotenv";
-import Airtable from 'airtable';
 dotenv.config();
 
 if (!process.env.AIRTABLE_API_KEY) {
@@ -103,10 +103,52 @@ export async function upsetImovelInAirtable(imovel) {
     }
 }
 
-export async function syncImoveisWithAirtable(imoveisFromXml) {
-    const tableName = "ACasa7";
+export async function upsetImagesInAirtable(imagesArray) {
+    const tableName = "Images";
     const baseInstance = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(process.env.AIRTABLE_BASE_ID);
-    const client = "A Casa 7";
+    const email = "galia@acasa7.com.br"
+    const clientId = "recZqOfnZXwqbbVZY";
+    const invoiceId = "reclDmUiMoLKzRe8k"
+    const userId = "recMjeDtB77Ijl9BL"
+
+    for (const img of imagesArray) {
+        console.log("Processing image:", img);
+        // Busca registro existente pelo campo 'imgUrl'
+        const records = await baseInstance(tableName)
+            .select({
+                filterByFormula: `{IMAGE_CRM} = '${img.imgUrl}'`,
+                maxRecords: 1,
+            })
+            .firstPage();
+
+        const fields = {
+            Invoices: [invoiceId],
+            Clients: [clientId],
+            ["Property's URL"]: img.propertyUrl || '',
+            Decluttering: img.retirar,
+            ["Image Workflow"]: "SmartStage",
+            ["INPUT IMAGE"]: img.imgUrl ? [{ url: img.imgUrl }] : [],
+            ["Room Type"]: img.tipo,
+            ["Owner Email"]: email,
+            //["Data de submissão"]: new Date().toISOString(),
+            Users: [userId],
+            ["Client Internal Code"]: img.codigo || '',
+        };
+
+        if (records.length > 0) {
+            // Atualiza registro existente
+            await baseInstance(tableName).update(records[0].id, fields);
+        } else {
+            // Cria novo registro
+            await baseInstance(tableName).create(fields);
+        }
+    }
+}
+
+export async function syncImoveisWithAirtable(imoveisFromXml) {
+    const tableName = "Krolow";
+    const baseInstance = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(process.env.AIRTABLE_BASE_ID);
+    const client = "Krolow Imóveis";
 
     // Busca todos os imóveis atuais do Airtable
     const airtableRecords = await baseInstance(tableName).select({}).all();
@@ -125,22 +167,22 @@ export async function syncImoveisWithAirtable(imoveisFromXml) {
         // Detectar o tipo de XML
         const isKenlo = !!imovel.CodigoImovel;
         const isSiga = !!imovel.ListingID;
-        
+
         // Define código com base no tipo de XML
-        const codigo = isKenlo ? imovel.CodigoImovel : 
-                      isSiga ? imovel.ListingID : 
-                      imovel.codigo;
-        
+        const codigo = isKenlo ? imovel.CodigoImovel :
+            isSiga ? imovel.ListingID :
+                imovel.codigo;
+
         // Mapear os campos conforme o tipo de XML
-        let tipo, finalidade, valor, bairro, cidade, uf, area_util, 
+        let tipo, finalidade, valor, bairro, cidade, uf, area_util,
             quartos, suites, banheiros, vagas, descricao, fotos = "";
-        
+
         if (isSiga) {
             // Campos específicos do SIGA
             tipo = imovel.Details?.PropertyType || "";
-            finalidade = imovel.TransactionType === "For Sale" ? "Venda" : 
-                         imovel.TransactionType === "For Rent" ? "Aluguel" : 
-                         imovel.TransactionType || "";
+            finalidade = imovel.TransactionType === "For Sale" ? "Venda" :
+                imovel.TransactionType === "For Rent" ? "Aluguel" :
+                    imovel.TransactionType || "";
             valor = imovel.Details?.ListPrice || 0;
             bairro = imovel.Location?.Neighborhood || "";
             cidade = imovel.Location?.City || "";
@@ -151,16 +193,51 @@ export async function syncImoveisWithAirtable(imoveisFromXml) {
             banheiros = imovel.Details?.Bathrooms || 0;
             vagas = imovel.Details?.Garage || 0;
             descricao = imovel.Title || imovel.Details?.Description || "";
-            
+
             // Tratar fotos do SIGA (dentro do objeto Media)
-            if (imovel.Media && imovel.Media.Item) {
+            if (isSiga && imovel.Media && imovel.Media.Item) {
+                console.log("Processando fotos do SIGA para imóvel:", codigo);
+
+                // Verificar se é um array ou item único
                 if (Array.isArray(imovel.Media.Item)) {
+                    // Extrair URLs das imagens do array 
                     fotos = imovel.Media.Item
-                        .filter(item => item.$.medium === "image")
-                        .map(item => item._)
+                        .filter(item => item.medium === "image") // Com mergeAttrs, o atributo está direto no objeto
+                        .map(item => item._) // O conteúdo está em _
                         .join('\n');
-                } else if (imovel.Media.Item.$ && imovel.Media.Item.$.medium === "image") {
+                } else if (imovel.Media.Item.medium === "image") {
+                    // Caso seja apenas um item
                     fotos = imovel.Media.Item._;
+                }
+
+                // Verificar se conseguimos extrair fotos
+                if (!fotos) {
+                    // Tentativa alternativa - o conteúdo pode ser o próprio texto do item
+                    try {
+                        const mediaItems = Array.isArray(imovel.Media.Item) ?
+                            imovel.Media.Item : [imovel.Media.Item];
+
+                        // Percorrer os items e extrair textos
+                        const urls = [];
+                        for (const item of mediaItems) {
+                            if (typeof item === 'string') {
+                                urls.push(item);
+                            } else if (item._) {
+                                urls.push(item._);
+                            } else if (item.primary === "true" || item.medium === "image") {
+                                // Tentativa de extrair com base em outros atributos
+                                const url = Object.values(item).find(val =>
+                                    typeof val === 'string' &&
+                                    val.startsWith('http')
+                                );
+                                if (url) urls.push(url);
+                            }
+                        }
+
+                        fotos = urls.join('\n');
+                    } catch (e) {
+                        console.error("Erro ao processar fotos do SIGA:", e);
+                    }
                 }
             }
         } else if (isKenlo) {
@@ -177,7 +254,7 @@ export async function syncImoveisWithAirtable(imoveisFromXml) {
             banheiros = imovel.QtdBanheiros;
             vagas = imovel.QtdVagas;
             descricao = imovel.Observacao || imovel.TituloImovel;
-            
+
             if (imovel.Fotos && imovel.Fotos.Foto) {
                 if (Array.isArray(imovel.Fotos.Foto)) {
                     fotos = imovel.Fotos.Foto.map(f => f.URLArquivo).join('\n');
@@ -199,22 +276,22 @@ export async function syncImoveisWithAirtable(imoveisFromXml) {
             banheiros = imovel.banheiros;
             vagas = imovel.vagas;
             descricao = imovel.descricao;
-            
+
             if (imovel.fotos?.foto) {
                 fotos = Array.isArray(imovel.fotos.foto)
                     ? imovel.fotos.foto.join('\n')
                     : imovel.fotos.foto;
             }
         }
-        
+
         // Tratar fotos especificamente para o SIGA - segunda tentativa
         // O formato pode variar conforme a estrutura XML exata
         if (isSiga && !fotos && imovel.Media) {
             try {
-                const mediaItems = Array.isArray(imovel.Media.Item) ? 
-                    imovel.Media.Item : 
+                const mediaItems = Array.isArray(imovel.Media.Item) ?
+                    imovel.Media.Item :
                     [imovel.Media.Item];
-                
+
                 fotos = mediaItems
                     .filter(item => typeof item === 'string')
                     .join('\n');
@@ -222,7 +299,7 @@ export async function syncImoveisWithAirtable(imoveisFromXml) {
                 console.error("Erro ao processar fotos do SIGA:", e);
             }
         }
-        
+
         const fields = {
             Client: client,
             Codigo: codigo,
@@ -262,4 +339,3 @@ export async function syncImoveisWithAirtable(imoveisFromXml) {
         }
     }
 }
-
