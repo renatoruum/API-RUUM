@@ -163,9 +163,22 @@ export async function syncImoveisWithAirtable(imoveisFromXml) {
     for (const imovel of imoveisFromXml) {
         const codigo = imovel.CodigoImovel || imovel.codigo;
         const fields = {
-            // ...monte os campos igual já faz...
+            Client: client,
             Codigo: codigo,
-            // ...outros campos...
+            Tipo: tipo,
+            Finalidade: finalidade,
+            Valor: Number(valor),
+            Bairro: bairro,
+            Cidade: cidade,
+            UF: uf,
+            Area_util: Number(area_util),
+            Quartos: Number(quartos),
+            Suites: Number(suites),
+            Banheiros: Number(banheiros),
+            Vagas: Number(vagas),
+            Descricao: descricao,
+            Fotos: fotos ? fotos : "",
+            Fotos_URLs: fotos ? fotos : "",
         };
 
         if (!airtableMap[codigo]) {
