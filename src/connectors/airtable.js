@@ -103,51 +103,10 @@ export async function upsetImovelInAirtable(imovel) {
     }
 }
 
-export async function upsetImagesInAirtable(imagesArray) {
-    const tableName = "Images";
-    const baseInstance = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(process.env.AIRTABLE_BASE_ID);
-    const email = "galia@acasa7.com.br"
-    const clientId = "recZqOfnZXwqbbVZY";
-    const invoiceId = "reclDmUiMoLKzRe8k"
-    const userId = "recMjeDtB77Ijl9BL"
-
-    for (const img of imagesArray) {
-        console.log("Processing image:", img);
-        // Busca registro existente pelo campo 'imgUrl'
-        const records = await baseInstance(tableName)
-            .select({
-                filterByFormula: `{IMAGE_CRM} = '${img.imgUrl}'`,
-                maxRecords: 1,
-            })
-            .firstPage();
-
-        const fields = {
-            Invoices: [invoiceId],
-            Clients: [clientId],
-            ["Property's URL"]: img.propertyUrl || '',
-            Decluttering: img.retirar,
-            ["Image Workflow"]: "SmartStage",
-            ["INPUT IMAGE"]: img.imgUrl ? [{ url: img.imgUrl }] : [],
-            ["Room Type"]: img.tipo,
-            ["Owner Email"]: email,
-            //["Data de submissão"]: new Date().toISOString(),
-            Users: [userId],
-            ["Client Internal Code"]: img.codigo || '',
-        };
-
-        if (records.length > 0) {
-            // Atualiza registro existente
-            await baseInstance(tableName).update(records[0].id, fields);
-        } else {
-            // Cria novo registro
-            await baseInstance(tableName).create(fields);
-        }
-    }
-}
-
 export async function syncImoveisWithAirtable(imoveisFromXml) {
     const tableName = "ACasa7";
     const baseInstance = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(process.env.AIRTABLE_BASE_ID);
+    const client = "A Casa 7";
 
     // Busca todos os imóveis atuais do Airtable
     const airtableRecords = await baseInstance(tableName).select({}).all();
@@ -157,11 +116,113 @@ export async function syncImoveisWithAirtable(imoveisFromXml) {
     });
 
     // Cria um Set com todos os códigos do XML
-    const xmlCodigos = new Set(imoveisFromXml.map(imovel => imovel.codigo || imovel.CodigoImovel));
+    const xmlCodigos = new Set(imoveisFromXml.map(imovel => {
+        return imovel.CodigoImovel || imovel.codigo || imovel.ListingID;
+    }));
 
     // Adiciona/Atualiza imóveis do XML
     for (const imovel of imoveisFromXml) {
-        const codigo = imovel.CodigoImovel || imovel.codigo;
+        // Detectar o tipo de XML
+        const isKenlo = !!imovel.CodigoImovel;
+        const isSiga = !!imovel.ListingID;
+        
+        // Define código com base no tipo de XML
+        const codigo = isKenlo ? imovel.CodigoImovel : 
+                      isSiga ? imovel.ListingID : 
+                      imovel.codigo;
+        
+        // Mapear os campos conforme o tipo de XML
+        let tipo, finalidade, valor, bairro, cidade, uf, area_util, 
+            quartos, suites, banheiros, vagas, descricao, fotos = "";
+        
+        if (isSiga) {
+            // Campos específicos do SIGA
+            tipo = imovel.Details?.PropertyType || "";
+            finalidade = imovel.TransactionType === "For Sale" ? "Venda" : 
+                         imovel.TransactionType === "For Rent" ? "Aluguel" : 
+                         imovel.TransactionType || "";
+            valor = imovel.Details?.ListPrice || 0;
+            bairro = imovel.Location?.Neighborhood || "";
+            cidade = imovel.Location?.City || "";
+            uf = imovel.Location?.State?.abbreviation || "";
+            area_util = imovel.Details?.LivingArea || 0;
+            quartos = imovel.Details?.Bedrooms || 0;
+            suites = imovel.Details?.Suites || 0;
+            banheiros = imovel.Details?.Bathrooms || 0;
+            vagas = imovel.Details?.Garage || 0;
+            descricao = imovel.Title || imovel.Details?.Description || "";
+            
+            // Tratar fotos do SIGA (dentro do objeto Media)
+            if (imovel.Media && imovel.Media.Item) {
+                if (Array.isArray(imovel.Media.Item)) {
+                    fotos = imovel.Media.Item
+                        .filter(item => item.$.medium === "image")
+                        .map(item => item._)
+                        .join('\n');
+                } else if (imovel.Media.Item.$ && imovel.Media.Item.$.medium === "image") {
+                    fotos = imovel.Media.Item._;
+                }
+            }
+        } else if (isKenlo) {
+            // Mapeamento Kenlo (existente)
+            tipo = imovel.TipoImovel;
+            finalidade = imovel.Finalidade;
+            valor = imovel.PrecoVenda;
+            bairro = imovel.Bairro;
+            cidade = imovel.Cidade;
+            uf = imovel.Estado;
+            area_util = imovel.AreaUtil;
+            quartos = imovel.QtdDormitorios;
+            suites = imovel.QtdSuites || imovel.suites;
+            banheiros = imovel.QtdBanheiros;
+            vagas = imovel.QtdVagas;
+            descricao = imovel.Observacao || imovel.TituloImovel;
+            
+            if (imovel.Fotos && imovel.Fotos.Foto) {
+                if (Array.isArray(imovel.Fotos.Foto)) {
+                    fotos = imovel.Fotos.Foto.map(f => f.URLArquivo).join('\n');
+                } else if (imovel.Fotos.Foto.URLArquivo) {
+                    fotos = imovel.Fotos.Foto.URLArquivo;
+                }
+            }
+        } else {
+            // Mapeamento padrão (existente)
+            tipo = imovel.tipo;
+            finalidade = imovel.finalidade;
+            valor = imovel.valor;
+            bairro = imovel.bairro;
+            cidade = imovel.cidade;
+            uf = imovel.uf;
+            area_util = imovel.area_util;
+            quartos = imovel.quartos;
+            suites = imovel.suites;
+            banheiros = imovel.banheiros;
+            vagas = imovel.vagas;
+            descricao = imovel.descricao;
+            
+            if (imovel.fotos?.foto) {
+                fotos = Array.isArray(imovel.fotos.foto)
+                    ? imovel.fotos.foto.join('\n')
+                    : imovel.fotos.foto;
+            }
+        }
+        
+        // Tratar fotos especificamente para o SIGA - segunda tentativa
+        // O formato pode variar conforme a estrutura XML exata
+        if (isSiga && !fotos && imovel.Media) {
+            try {
+                const mediaItems = Array.isArray(imovel.Media.Item) ? 
+                    imovel.Media.Item : 
+                    [imovel.Media.Item];
+                
+                fotos = mediaItems
+                    .filter(item => typeof item === 'string')
+                    .join('\n');
+            } catch (e) {
+                console.error("Erro ao processar fotos do SIGA:", e);
+            }
+        }
+        
         const fields = {
             Client: client,
             Codigo: codigo,
@@ -201,3 +262,4 @@ export async function syncImoveisWithAirtable(imoveisFromXml) {
         }
     }
 }
+

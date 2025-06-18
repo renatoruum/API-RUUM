@@ -1,3 +1,4 @@
+import { parseStringPromise } from "xml2js"; // Adicione este import se não existir
 
 export async function parseImoveisXml(xmlString) {
   const result = await parseStringPromise(xmlString, { explicitArray: false, trim: true, mergeAttrs: true });
@@ -19,6 +20,10 @@ export async function parseImoveisXml(xmlString) {
   // Estrutura GaiaWsLancamentos
   else if (result.GaiaWsLancamentos?.Lancamentos?.Lancamento) {
     imoveisArr = result.GaiaWsLancamentos.Lancamentos.Lancamento;
+  }
+  // Estrutura SIGA CRM - ListingDataFeed
+  else if (result.ListingDataFeed?.Listings?.Listing) {
+    imoveisArr = result.ListingDataFeed.Listings.Listing;
   }
 
   if (!imoveisArr) {
