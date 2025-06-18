@@ -148,6 +148,7 @@ export async function upsetImagesInAirtable(imagesArray) {
 export async function syncImoveisWithAirtable(imoveisFromXml) {
     const tableName = "ACasa7";
     const baseInstance = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(process.env.AIRTABLE_BASE_ID);
+    const client = "A Casa 7";  // Adicionei esta linha que faltava
 
     // Busca todos os imóveis atuais do Airtable
     const airtableRecords = await baseInstance(tableName).select({}).all();
@@ -161,7 +162,36 @@ export async function syncImoveisWithAirtable(imoveisFromXml) {
 
     // Adiciona/Atualiza imóveis do XML
     for (const imovel of imoveisFromXml) {
-        const codigo = imovel.CodigoImovel || imovel.codigo;
+        const isKenlo = !!imovel.CodigoImovel;
+        const codigo = isKenlo ? imovel.CodigoImovel : imovel.codigo;
+
+        // Montar campos como na função upsetImovelInAirtable
+        const tipo = isKenlo ? imovel.TipoImovel : imovel.tipo;
+        const finalidade = isKenlo ? imovel.Finalidade : imovel.finalidade;
+        const valor = isKenlo ? imovel.PrecoVenda : imovel.valor;
+        const bairro = isKenlo ? imovel.Bairro : imovel.bairro;
+        const cidade = isKenlo ? imovel.Cidade : imovel.cidade;
+        const uf = isKenlo ? imovel.Estado : imovel.uf;
+        const area_util = isKenlo ? imovel.AreaUtil : imovel.area_util;
+        const quartos = isKenlo ? imovel.QtdDormitorios : imovel.quartos;
+        const suites = isKenlo ? imovel.QtdSuites || imovel.suites : imovel.suites;
+        const banheiros = isKenlo ? imovel.QtdBanheiros : imovel.banheiros;
+        const vagas = isKenlo ? imovel.QtdVagas : imovel.vagas;
+        const descricao = isKenlo ? imovel.Observacao || imovel.TituloImovel : imovel.descricao;
+
+        let fotos = "";
+        if (isKenlo && imovel.Fotos && imovel.Fotos.Foto) {
+            if (Array.isArray(imovel.Fotos.Foto)) {
+                fotos = imovel.Fotos.Foto.map(f => f.URLArquivo).join('\n');
+            } else if (imovel.Fotos.Foto.URLArquivo) {
+                fotos = imovel.Fotos.Foto.URLArquivo;
+            }
+        } else if (imovel.fotos?.foto) {
+            fotos = Array.isArray(imovel.fotos.foto)
+                ? imovel.fotos.foto.join('\n')
+                : imovel.fotos.foto;
+        }
+
         const fields = {
             Client: client,
             Codigo: codigo,
