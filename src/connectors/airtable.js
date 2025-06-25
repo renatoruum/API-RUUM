@@ -103,13 +103,24 @@ export async function upsetImovelInAirtable(imovel) {
     }
 }
 
-export async function upsetImagesInAirtable(imagesArray) {
+export async function upsetImagesInAirtable(
+    imagesArray,
+    customEmail,
+    customClientId,
+    customInvoiceId,
+    customUserId
+) {
     const tableName = "Images";
     const baseInstance = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(process.env.AIRTABLE_BASE_ID);
-    const email = "galia@acasa7.com.br"
-    const clientId = "recZqOfnZXwqbbVZY";
-    const invoiceId = "reclDmUiMoLKzRe8k"
-    const userId = "recMjeDtB77Ijl9BL"
+
+
+    // Usar valores personalizados do frontend se fornecidos, ou valores padrão caso contrário
+    const email = customEmail 
+    const clientId = customClientId 
+    const invoiceId = customInvoiceId 
+    const userId = customUserId
+
+    console.log(`Using values: email=${email}, clientId=${clientId}, invoiceId=${invoiceId}, userId=${userId}`);
 
     for (const img of imagesArray) {
         console.log("Processing image:", img);
@@ -130,7 +141,6 @@ export async function upsetImagesInAirtable(imagesArray) {
             ["INPUT IMAGE"]: img.imgUrl ? [{ url: img.imgUrl }] : [],
             ["Room Type"]: img.tipo,
             ["Owner Email"]: email,
-            //["Data de submissão"]: new Date().toISOString(),
             Users: [userId],
             ["Client Internal Code"]: img.codigo || '',
         };
