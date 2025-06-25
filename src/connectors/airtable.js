@@ -120,7 +120,7 @@ export async function upsetImagesInAirtable(imagesArray) {
                 maxRecords: 1,
             })
             .firstPage();
-
+        const encodedUrl = img.imagensReferencia ? encodeURI(img.imagensReferencia) : '';
         const fields = {
             Invoices: [invoiceId],
             Clients: [clientId],
@@ -133,6 +133,13 @@ export async function upsetImagesInAirtable(imagesArray) {
             //["Data de submissão"]: new Date().toISOString(),
             Users: [userId],
             ["Client Internal Code"]: img.codigo || '',
+            Message: img.observacoes || '',
+            //STYLE: img.estilo,
+            //["Video Template"]: img.modeloVideo,
+            //["Video Proportion"]: img.formatoVideo,
+
+            //["ADDITIONAL ATTACHMENTS"]: encodedUrl ? [{ url: encodedUrl }] : [],
+            //Finish: img.acabamento
         };
 
         if (records.length > 0) {
