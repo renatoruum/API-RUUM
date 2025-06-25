@@ -143,6 +143,13 @@ export async function upsetImagesInAirtable(
             ["Owner Email"]: email,
             Users: [userId],
             ["Client Internal Code"]: img.codigo || '',
+            Message: img.observacoes || '',
+            //STYLE: img.estilo,
+            //["Video Template"]: img.modeloVideo,
+            //["Video Proportion"]: img.formatoVideo,
+
+            //["ADDITIONAL ATTACHMENTS"]: encodedUrl ? [{ url: encodedUrl }] : [],
+            //Finish: img.acabamento
         };
 
         if (records.length > 0) {
