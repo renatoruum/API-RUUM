@@ -103,13 +103,25 @@ export async function upsetImovelInAirtable(imovel) {
     }
 }
 
-export async function upsetImagesInAirtable(imagesArray) {
+export async function upsetImagesInAirtable(
+    imagesArray,
+    customEmail,
+    customClientId,
+    customInvoiceId,
+    customUserId
+) {
     const tableName = "Images";
     const baseInstance = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(process.env.AIRTABLE_BASE_ID);
-    const email = "galia@acasa7.com.br"
-    const clientId = "recZqOfnZXwqbbVZY";
-    const invoiceId = "reclDmUiMoLKzRe8k"
-    const userId = "recMjeDtB77Ijl9BL"
+    //const email = "galia@acasa7.com.br"
+    //const clientId = "recZqOfnZXwqbbVZY";
+    //const invoiceId = "reclDmUiMoLKzRe8k"
+    //const userId = "recMjeDtB77Ijl9BL"
+
+    // Usar valores personalizados do frontend se fornecidos, ou valores padrão caso contrário
+    const email = customEmail
+    const clientId = customClientId
+    const invoiceId = customInvoiceId
+    const userId = customUserId
 
     for (const img of imagesArray) {
         console.log("Processing image:", img);
@@ -126,20 +138,23 @@ export async function upsetImagesInAirtable(imagesArray) {
             Clients: [clientId],
             ["Property's URL"]: img.propertyUrl || '',
             Decluttering: img.retirar,
-            ["Image Workflow"]: "SmartStage",
+            Invoices: [invoiceId],
+            Clients: [clientId],
+            ["Property's URL"]: img.propertyUrl || '',
+            Decluttering: img.retirar || null,  // Single select
+            ["Image Workflow"]: img.imgWorkflow,
             ["INPUT IMAGE"]: img.imgUrl ? [{ url: img.imgUrl }] : [],
-            ["Room Type"]: img.tipo,
+            ["Room Type"]: img.tipo || null,    // Single select
             ["Owner Email"]: email,
-            //["Data de submissão"]: new Date().toISOString(),
             Users: [userId],
             ["Client Internal Code"]: img.codigo || '',
-            Message: img.observacoes || '',
-            //STYLE: img.estilo,
-            //["Video Template"]: img.modeloVideo,
-            //["Video Proportion"]: img.formatoVideo,
-
-            //["ADDITIONAL ATTACHMENTS"]: encodedUrl ? [{ url: encodedUrl }] : [],
-            //Finish: img.acabamento
+            Message: img.observacoes || '',     // Long text
+            ["Video Template"]: img.modeloVideo || null,  // Single select
+            ["Video Proportion"]: img.formatoVideo || null, // Single select
+            ["ADDITIONAL ATTACHMENTS"]: encodedUrl ? [{ url: encodedUrl }] : [],
+            Finish: img.acabamento || null,      // Single select
+            Estilo: img.estilo || null,
+            //["Data de submissão"]: new Date().toISOString(),
         };
 
         if (records.length > 0) {
