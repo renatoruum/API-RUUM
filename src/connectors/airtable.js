@@ -113,12 +113,11 @@ export async function upsetImagesInAirtable(
     const tableName = "Images";
     const baseInstance = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(process.env.AIRTABLE_BASE_ID);
 
-
     // Usar valores personalizados do frontend se fornecidos, ou valores padrão caso contrário
-    const email = customEmail 
-    const clientId = customClientId 
-    const invoiceId = customInvoiceId 
-    const userId = customUserId
+    const email = customEmail;
+    const clientId = customClientId;
+    const invoiceId = customInvoiceId;
+    const userId = customUserId;
 
     console.log(`Using values: email=${email}, clientId=${clientId}, invoiceId=${invoiceId}, userId=${userId}`);
 
@@ -127,37 +126,47 @@ export async function upsetImagesInAirtable(
         // Busca registro existente pelo campo 'imgUrl'
         const records = await baseInstance(tableName)
             .select({
-                filterByFormula: `{IMAGE_CRM} = '${img.imgUrl}'`,
+                filterByFormula: `{INPUT IMAGE} = '${img.imgUrl}'`,
                 maxRecords: 1,
             })
             .firstPage();
+
+        // Processar URL de referência para evitar problemas com caracteres especiais
+        const encodedUrl = img.imagensReferencia ? encodeURI(img.imagensReferencia) : '';
 
         const fields = {
             Invoices: [invoiceId],
             Clients: [clientId],
             ["Property's URL"]: img.propertyUrl || '',
-            Decluttering: img.retirar,
-            ["Image Workflow"]: "SmartStage",
+            Decluttering: img.retirar || null,  // Single select
+            ["Image Workflow"]: img.imgWorkflow || "SmartStage", // Valor padrão se não existir
             ["INPUT IMAGE"]: img.imgUrl ? [{ url: img.imgUrl }] : [],
-            ["Room Type"]: img.tipo,
+            ["Room Type"]: img.tipo || null,    // Single select
             ["Owner Email"]: email,
             Users: [userId],
             ["Client Internal Code"]: img.codigo || '',
-            Message: img.observacoes || '',
-            //STYLE: img.estilo,
-            //["Video Template"]: img.modeloVideo,
-            //["Video Proportion"]: img.formatoVideo,
-
-            //["ADDITIONAL ATTACHMENTS"]: encodedUrl ? [{ url: encodedUrl }] : [],
-            //Finish: img.acabamento
+            Message: img.observacoes || '',     // Long text
+            ["Video Template"]: img.modeloVideo || null,  // Single select
+            ["Video Proportion"]: img.formatoVideo || null, // Single select
+            ["ADDITIONAL ATTACHMENTS"]: encodedUrl ? [{ url: encodedUrl }] : [],
+            Finish: img.acabamento || null,      // Single select
+            Estilo: img.estilo || null,
+            //["Data de submissão"]: new Date().toISOString(),
         };
 
-        if (records.length > 0) {
-            // Atualiza registro existente
-            await baseInstance(tableName).update(records[0].id, fields);
-        } else {
-            // Cria novo registro
-            await baseInstance(tableName).create(fields);
+        try {
+            if (records.length > 0) {
+                // Atualiza registro existente
+                await baseInstance(tableName).update(records[0].id, fields);
+                console.log("Updated record:", records[0].id);
+            } else {
+                // Cria novo registro
+                const created = await baseInstance(tableName).create(fields);
+                console.log("Created record:", created.id);
+            }
+        } catch (error) {
+            console.error("Error updating/creating record in Airtable:", error);
+            // Continue with next image even if there's an error
         }
     }
 }

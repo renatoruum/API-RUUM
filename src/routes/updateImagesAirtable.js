@@ -5,8 +5,14 @@ const router = express.Router();
 
 router.post("/update-images-airtable", async (req, res) => {
   try {
-    // Extrair dados do corpo da requisição
-    const { imagesArray, email, clientId, invoiceId, userId } = req.body;
+    
+     console.log("Body recebido:", req.body);
+    
+    // Verifica se recebemos um objeto com imagesArray ou diretamente um array
+    const imagesArray = req.body.imagesArray || req.body;
+    
+    // Passa os parâmetros adicionais para a função
+    const { email, clientId, invoiceId, userId } = req.body;
     
     if (!imagesArray || !Array.isArray(imagesArray) || imagesArray.length === 0) {
       return res.status(400).json({ 
