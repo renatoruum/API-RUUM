@@ -168,9 +168,9 @@ export async function upsetImagesInAirtable(
 }
 
 export async function syncImoveisWithAirtable(imoveisFromXml) {
-    const tableName = "Krolow";
+    const tableName = "ConceitoCarioca";
     const baseInstance = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(process.env.AIRTABLE_BASE_ID);
-    const client = "Krolow Imóveis";
+    const client = "Conceito Carioca";
 
     // Busca todos os imóveis atuais do Airtable
     const airtableRecords = await baseInstance(tableName).select({}).all();
