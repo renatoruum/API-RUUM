@@ -112,59 +112,114 @@ export async function upsetImagesInAirtable(
 ) {
     const tableName = "Images";
     const baseInstance = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(process.env.AIRTABLE_BASE_ID);
-    //const email = "galia@acasa7.com.br"
-    //const clientId = "recZqOfnZXwqbbVZY";
-    //const invoiceId = "reclDmUiMoLKzRe8k"
-    //const userId = "recMjeDtB77Ijl9BL"
-
+    
     // Usar valores personalizados do frontend se fornecidos, ou valores padrão caso contrário
     const email = customEmail
     const clientId = customClientId
     const invoiceId = customInvoiceId
     const userId = customUserId
 
-    for (const img of imagesArray) {
-        console.log("Processing image:", img);
-        // Busca registro existente pelo campo 'imgUrl'
-        const records = await baseInstance(tableName)
-            .select({
-                filterByFormula: `{IMAGE_CRM} = '${img.imgUrl}'`,
-                maxRecords: 1,
-            })
-            .firstPage();
-        const encodedUrl = img.imagensReferencia ? encodeURI(img.imagensReferencia) : '';
-        const fields = {
-            Invoices: [invoiceId],
-            Clients: [clientId],
-            ["Property's URL"]: img.propertyUrl || '',
-            Decluttering: img.retirar,
-            Invoices: [invoiceId],
-            Clients: [clientId],
-            ["Property's URL"]: img.propertyUrl || '',
-            Decluttering: img.retirar || null,  // Single select
-            ["Image Workflow"]: img.imgWorkflow,
-            ["INPUT IMAGE"]: img.imgUrl ? [{ url: img.imgUrl }] : [],
-            ["Room Type"]: img.tipo || null,    // Single select
-            ["Owner Email"]: email,
-            Users: [userId],
-            ["Client Internal Code"]: img.codigo || '',
-            Message: img.observacoes || '',     // Long text
-            ["Video Template"]: img.modeloVideo || null,  // Single select
-            ["Video Proportion"]: img.formatoVideo || null, // Single select
-            ["ADDITIONAL ATTACHMENTS"]: encodedUrl ? [{ url: encodedUrl }] : [],
-            Finish: img.acabamento || null,      // Single select
-            Estilo: img.estilo || null,
-            //["Data de submissão"]: new Date().toISOString(),
-        };
+    const results = [];
+    
+    for (let i = 0; i < imagesArray.length; i++) {
+        const img = imagesArray[i];
+        
+        try {
+            console.log(`Processing image ${i + 1}/${imagesArray.length}:`, img.imgUrl);
+            
+            // Busca registro existente pelo campo 'Client Internal Code' e 'INPUT IMAGE'
+            // Temporariamente desabilitado para sempre criar novos registros
+            const records = [];
+            /*
+            const records = await baseInstance(tableName)
+                .select({
+                    filterByFormula: `AND({Client Internal Code} = '${img.codigo}', {INPUT IMAGE} != '')`,
+                    maxRecords: 1,
+                })
+                .firstPage();
+            */
+                
+            const encodedUrl = img.imagensReferencia ? encodeURI(img.imagensReferencia) : '';
+            
+            // Função para validar campos de single select - só inclui se tiver valor válido
+            const getSelectValue = (value) => {
+                if (!value) return null;
+                // Remove aspas duplas extras e espaços em branco
+                const cleanValue = value.toString().replace(/^"+|"+$/g, '').trim();
+                return cleanValue !== '' ? cleanValue : null;
+            };
+            
+            const fields = {
+                Invoices: [invoiceId],
+                Clients: [clientId],
+                ["Property's URL"]: img.propertyUrl || '',
+                ["INPUT IMAGE"]: img.imgUrl ? [{ url: img.imgUrl }] : [],
+                ["Owner Email"]: email,
+                Users: [userId],
+                ["Client Internal Code"]: img.codigo || '',
+                Message: img.observacoes || '',     // Long text
+                ["ADDITIONAL ATTACHMENTS"]: encodedUrl ? [{ url: encodedUrl }] : [],
+            };
 
-        if (records.length > 0) {
-            // Atualiza registro existente
-            await baseInstance(tableName).update(records[0].id, fields);
-        } else {
-            // Cria novo registro
-            await baseInstance(tableName).create(fields);
+            // Adiciona campos de select apenas se tiverem valores válidos
+            const decluttering = getSelectValue(img.retirar);
+            if (decluttering) {
+                fields["Decluttering"] = decluttering;
+            }
+
+            const roomType = getSelectValue(img.tipo);
+            if (roomType) {
+                fields["Room Type"] = roomType;
+            }
+
+            const videoTemplate = getSelectValue(img.modeloVideo);
+            if (videoTemplate) {
+                fields["Video Template"] = videoTemplate;
+            }
+
+            const videoProportion = getSelectValue(img.formatoVideo);
+            if (videoProportion) {
+                fields["Video Proportion"] = videoProportion;
+            }
+
+            const finish = getSelectValue(img.acabamento);
+            if (finish) {
+                fields["Finish"] = finish;
+            }
+
+            const estilo = getSelectValue(img.estilo);
+            if (estilo) {
+                fields["Estilo"] = estilo;
+            }
+
+            const imageWorkflow = getSelectValue(img.imgWorkflow);
+            if (imageWorkflow) {
+                fields["Image Workflow"] = imageWorkflow;
+            }
+
+            console.log(`Fields being sent for image ${i + 1}:`, JSON.stringify(fields, null, 2));
+
+            let result;
+            if (records.length > 0) {
+                // Atualiza registro existente
+                result = await baseInstance(tableName).update(records[0].id, fields);
+                console.log(`✅ Image ${i + 1} updated successfully:`, records[0].id);
+                results.push({ index: i, status: 'updated', id: records[0].id, imgUrl: img.imgUrl });
+            } else {
+                // Cria novo registro
+                result = await baseInstance(tableName).create(fields);
+                console.log(`✅ Image ${i + 1} created successfully:`, result.id);
+                results.push({ index: i, status: 'created', id: result.id, imgUrl: img.imgUrl });
+            }
+        } catch (error) {
+            console.error(`❌ Error processing image ${i + 1}:`, error.message);
+            results.push({ index: i, status: 'error', error: error.message, imgUrl: img.imgUrl });
+            // Continua processando as outras imagens mesmo se uma falhar
         }
     }
+    
+    console.log(`Processing complete. Results:`, results);
+    return results;
 }
 
 export async function syncImoveisWithAirtable(imoveisFromXml) {

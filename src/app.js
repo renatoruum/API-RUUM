@@ -10,6 +10,8 @@ import importXmlRoute from "./routes/importXml.js";
 import updateImagesAirtableRoute from "./routes/updateImagesAirtable.js";
 import xmlWatcherRoute from "./routes/xmlWatcher.js";
 import sendShotStackRoute from "./routes/sendShotStack.js";
+import sendRunwayRoute from "./routes/sendRunway.js";
+import sendElevenLabsRoute from "./routes/sendElevenLabs.js";
 
 const app = express();
 app.use(cors());
@@ -20,11 +22,9 @@ app.use("/api", chatgptRoute);
 app.use("/api", importXmlRoute);
 app.use("/api", updateImagesAirtableRoute);
 app.use("/api", xmlWatcherRoute);
+app.use("/api", sendRunwayRoute);
 app.use("/api", sendShotStackRoute);
-
-
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+app.use("/api", sendElevenLabsRoute);
 
 // Endpoint /webhook
 app.post("/webhook", async (req, res) => {
@@ -39,7 +39,7 @@ app.post("/webhook", async (req, res) => {
         }
 
         // Faz uma requisição interna para a rota /api/chatgpt
-        const chatGPTResponse = await fetch("http://localhost:3000/api/chatgpt", {
+        const chatGPTResponse = await fetch(`https://apiruum-667905204535.us-central1.run.app/api/chatgpt`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ image_url, room_type, style }),
@@ -58,3 +58,6 @@ app.post("/webhook", async (req, res) => {
         res.status(500).json({ success: false, message: "Internal Server Error" });
     }
 });
+
+const PORT = process.env.PORT || 8080;
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
