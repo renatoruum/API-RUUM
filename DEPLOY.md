@@ -56,6 +56,7 @@ gcloud run deploy apiruum \
   --set-env-vars SHOTSTACK_API_KEY=sua_chave_shotstack_aqui \
   --set-env-vars RUNWAYML_API_SECRET=sua_chave_runway_aqui \
   --set-env-vars ELEVENLABS_API_KEY=sua_chave_elevenlabs_aqui \
+  --set-env-vars VIRTUAL_STAGING_API_KEY=sua_chave_virtual_staging_aqui \
   --set-env-vars NODE_ENV=production \
   --set-env-vars API_TOKEN=seu_token_api_aqui
 ```
@@ -82,6 +83,9 @@ RUNWAYML_API_SECRET=
 # ElevenLabs
 ELEVENLABS_API_KEY=
 
+# Virtual Staging AI
+VIRTUAL_STAGING_API_KEY=
+
 # API
 API_TOKEN=
 
@@ -102,6 +106,9 @@ NODE_ENV=production
 - `POST /api/runway` - Geração de imagens com Runway
 - `POST /api/runway/image-to-video` - Geração de vídeo com Runway
 - `POST /api/sendShotStack` - Processamento com Shotstack
+- `POST /api/elevenlabs/text-to-speech` - Text-to-Speech com ElevenLabs
+- `POST /api/virtual-staging/create` - Virtual Staging de imóveis
+- `POST /api/virtual-staging/analyze-and-stage` - Análise + Virtual Staging automático
 - `POST /webhook` - Webhook principal
 
 ## Verificação do Deploy

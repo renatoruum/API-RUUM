@@ -46,6 +46,7 @@ required_vars=(
     "SHOTSTACK_API_KEY"
     "RUNWAYML_API_SECRET"
     "ELEVENLABS_API_KEY"
+    "VIRTUAL_STAGING_API_KEY"
     "API_TOKEN"
 )
 
@@ -85,6 +86,7 @@ gcloud run deploy "$SERVICE_NAME" \
   --set-env-vars "SHOTSTACK_API_KEY=${SHOTSTACK_API_KEY}" \
   --set-env-vars "RUNWAYML_API_SECRET=${RUNWAYML_API_SECRET}" \
   --set-env-vars "ELEVENLABS_API_KEY=${ELEVENLABS_API_KEY}" \
+  --set-env-vars "VIRTUAL_STAGING_API_KEY=${VIRTUAL_STAGING_API_KEY}" \
   --set-env-vars "NODE_ENV=production" \
   --set-env-vars "API_TOKEN=${API_TOKEN}"
 

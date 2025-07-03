@@ -12,12 +12,13 @@ import xmlWatcherRoute from "./routes/xmlWatcher.js";
 import sendShotStackRoute from "./routes/sendShotStack.js";
 import sendRunwayRoute from "./routes/sendRunway.js";
 import sendElevenLabsRoute from "./routes/sendElevenLabs.js";
+import sendVirtualStagingRoute from "./routes/sendVirtualStaging.js";
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Rota para o ChatGPT
+// Rotas
 app.use("/api", chatgptRoute);
 app.use("/api", importXmlRoute);
 app.use("/api", updateImagesAirtableRoute);
@@ -25,6 +26,7 @@ app.use("/api", xmlWatcherRoute);
 app.use("/api", sendRunwayRoute);
 app.use("/api", sendShotStackRoute);
 app.use("/api", sendElevenLabsRoute);
+app.use("/api", sendVirtualStagingRoute);
 
 // Endpoint /webhook
 app.post("/webhook", async (req, res) => {
