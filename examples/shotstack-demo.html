@@ -1,0 +1,819 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ShotStack API - Exemplo de Uso</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background-color: #f5f5f5;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            padding: 30px;
+        }
+
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 30px;
+            font-size: 2.5em;
+        }
+
+        .section {
+            margin-bottom: 40px;
+            padding: 25px;
+            background: #fafafa;
+            border-radius: 8px;
+            border-left: 4px solid #007bff;
+        }
+
+        .section h2 {
+            color: #007bff;
+            margin-bottom: 20px;
+            font-size: 1.5em;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #555;
+        }
+
+        input[type="text"], input[type="url"], textarea, select {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 6px;
+            font-size: 16px;
+            transition: border-color 0.3s ease;
+        }
+
+        input[type="text"]:focus, input[type="url"]:focus, textarea:focus, select:focus {
+            outline: none;
+            border-color: #007bff;
+        }
+
+        textarea {
+            resize: vertical;
+            min-height: 120px;
+            font-family: monospace;
+        }
+
+        .image-inputs {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .image-input {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .image-input input {
+            flex: 1;
+        }
+
+        .btn {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .btn:hover {
+            background: #0056b3;
+        }
+
+        .btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+
+        .btn-secondary {
+            background: #6c757d;
+        }
+
+        .btn-secondary:hover {
+            background: #545b62;
+        }
+
+        .btn-success {
+            background: #28a745;
+        }
+
+        .btn-success:hover {
+            background: #1e7e34;
+        }
+
+        .progress-container {
+            margin: 20px 0;
+            display: none;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background: #e9ecef;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: #007bff;
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+
+        .progress-text {
+            text-align: center;
+            margin-top: 10px;
+            color: #666;
+            font-size: 14px;
+        }
+
+        .video-container {
+            margin-top: 20px;
+            text-align: center;
+        }
+
+        .video-container video {
+            max-width: 100%;
+            height: auto;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #007bff;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+            padding: 12px;
+            border-radius: 6px;
+            margin: 10px 0;
+            border: 1px solid #f5c6cb;
+        }
+
+        .success {
+            background: #d4edda;
+            color: #155724;
+            padding: 12px;
+            border-radius: 6px;
+            margin: 10px 0;
+            border: 1px solid #c3e6cb;
+        }
+
+        .code-preview {
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 6px;
+            padding: 15px;
+            font-family: monospace;
+            font-size: 14px;
+            overflow-x: auto;
+            margin: 15px 0;
+        }
+
+        .tabs {
+            display: flex;
+            margin-bottom: 20px;
+            border-bottom: 2px solid #e9ecef;
+        }
+
+        .tab {
+            padding: 12px 24px;
+            background: none;
+            border: none;
+            cursor: pointer;
+            font-size: 16px;
+            color: #666;
+            border-bottom: 2px solid transparent;
+            transition: all 0.3s ease;
+        }
+
+        .tab.active {
+            color: #007bff;
+            border-bottom-color: #007bff;
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                padding: 20px;
+            }
+            
+            .grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎥 ShotStack API - Criação de Vídeos</h1>
+        
+        <!-- Tabs -->
+        <div class="tabs">
+            <button class="tab active" onclick="showTab('slideshow')">📸 Slideshow</button>
+            <button class="tab" onclick="showTab('showcase')">🏠 Property Showcase</button>
+            <button class="tab" onclick="showTab('custom')">⚙️ Timeline Personalizada</button>
+        </div>
+
+        <!-- Slideshow Tab -->
+        <div id="slideshow" class="tab-content active">
+            <div class="section">
+                <h2>Criar Slideshow de Imagens</h2>
+                <div class="form-group">
+                    <label>URLs das Imagens:</label>
+                    <div class="image-inputs" id="slideshow-images">
+                        <div class="image-input">
+                            <input type="url" placeholder="https://example.com/image1.jpg" required>
+                            <button class="btn btn-secondary" onclick="removeImageInput(this)">Remover</button>
+                        </div>
+                        <div class="image-input">
+                            <input type="url" placeholder="https://example.com/image2.jpg" required>
+                            <button class="btn btn-secondary" onclick="removeImageInput(this)">Remover</button>
+                        </div>
+                    </div>
+                    <button class="btn btn-secondary" onclick="addImageInput('slideshow-images')" style="margin-top: 10px;">+ Adicionar Imagem</button>
+                </div>
+                
+                <div class="grid">
+                    <div class="form-group">
+                        <label>Duração por Imagem (segundos):</label>
+                        <input type="number" id="slideshow-duration" value="3" min="1" max="10">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Transição:</label>
+                        <select id="slideshow-transition">
+                            <option value="fade">Fade</option>
+                            <option value="zoomIn">Zoom In</option>
+                            <option value="zoomOut">Zoom Out</option>
+                            <option value="slideLeft">Slide Left</option>
+                            <option value="slideRight">Slide Right</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <div class="form-group">
+                    <label>Música de Fundo (opcional):</label>
+                    <input type="url" id="slideshow-soundtrack" placeholder="https://example.com/music.mp3">
+                </div>
+                
+                <div class="form-group">
+                    <label>Texto Sobreposto (opcional):</label>
+                    <input type="text" id="slideshow-text" placeholder="Título do vídeo">
+                </div>
+                
+                <button class="btn" onclick="createSlideshow()">
+                    <span class="loading" id="slideshow-loading" style="display: none;"></span>
+                    Criar Slideshow
+                </button>
+            </div>
+        </div>
+
+        <!-- Property Showcase Tab -->
+        <div id="showcase" class="tab-content">
+            <div class="section">
+                <h2>Property Showcase</h2>
+                <div class="form-group">
+                    <label>Título da Propriedade:</label>
+                    <input type="text" id="showcase-title" placeholder="Ex: Apartamento Moderno">
+                </div>
+                
+                <div class="form-group">
+                    <label>Descrição:</label>
+                    <input type="text" id="showcase-description" placeholder="Ex: Vista para o mar, 3 quartos, 2 banheiros">
+                </div>
+                
+                <div class="form-group">
+                    <label>Imagens da Propriedade:</label>
+                    <div class="image-inputs" id="showcase-images">
+                        <div class="image-input">
+                            <input type="url" placeholder="https://example.com/fachada.jpg" required>
+                            <button class="btn btn-secondary" onclick="removeImageInput(this)">Remover</button>
+                        </div>
+                        <div class="image-input">
+                            <input type="url" placeholder="https://example.com/sala.jpg" required>
+                            <button class="btn btn-secondary" onclick="removeImageInput(this)">Remover</button>
+                        </div>
+                    </div>
+                    <button class="btn btn-secondary" onclick="addImageInput('showcase-images')" style="margin-top: 10px;">+ Adicionar Imagem</button>
+                </div>
+                
+                <div class="form-group">
+                    <label>Duração por Imagem (segundos):</label>
+                    <input type="number" id="showcase-duration" value="4" min="2" max="8">
+                </div>
+                
+                <button class="btn" onclick="createPropertyShowcase()">
+                    <span class="loading" id="showcase-loading" style="display: none;"></span>
+                    Criar Property Showcase
+                </button>
+            </div>
+        </div>
+
+        <!-- Custom Timeline Tab -->
+        <div id="custom" class="tab-content">
+            <div class="section">
+                <h2>Timeline Personalizada</h2>
+                <div class="form-group">
+                    <label>Configuração JSON da Timeline:</label>
+                    <textarea id="custom-timeline" placeholder='Exemplo:
+{
+  "tracks": [
+    {
+      "clips": [
+        {
+          "asset": {
+            "type": "image",
+            "src": "https://example.com/image.jpg"
+          },
+          "start": 0,
+          "length": 5,
+          "effect": "zoomIn"
+        }
+      ]
+    }
+  ]
+}'></textarea>
+                </div>
+                
+                <div class="grid">
+                    <div class="form-group">
+                        <label>Formato:</label>
+                        <select id="custom-format">
+                            <option value="mp4">MP4</option>
+                            <option value="webm">WebM</option>
+                            <option value="gif">GIF</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Resolução:</label>
+                        <select id="custom-resolution">
+                            <option value="preview">Preview (512x288)</option>
+                            <option value="mobile">Mobile (640x360)</option>
+                            <option value="sd">SD (1024x576)</option>
+                            <option value="hd" selected>HD (1280x720)</option>
+                            <option value="fhd">Full HD (1920x1080)</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <button class="btn" onclick="createCustomTimeline()">
+                    <span class="loading" id="custom-loading" style="display: none;"></span>
+                    Criar Vídeo Personalizado
+                </button>
+            </div>
+        </div>
+
+        <!-- Progress Bar -->
+        <div class="progress-container" id="progress-container">
+            <div class="progress-bar">
+                <div class="progress-fill" id="progress-fill"></div>
+            </div>
+            <div class="progress-text" id="progress-text">Preparando...</div>
+        </div>
+
+        <!-- Messages -->
+        <div id="messages"></div>
+
+        <!-- Video Container -->
+        <div id="video-container" class="video-container"></div>
+    </div>
+
+    <script>
+        // Configuração da API
+        const API_BASE_URL = 'https://apiruum-667905204535.us-central1.run.app';
+        
+        // Funções de UI
+        function showTab(tabName) {
+            // Esconder todas as tabs
+            document.querySelectorAll('.tab-content').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            
+            // Remover classe active dos botões
+            document.querySelectorAll('.tab').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            
+            // Mostrar tab selecionada
+            document.getElementById(tabName).classList.add('active');
+            event.target.classList.add('active');
+        }
+
+        function addImageInput(containerId) {
+            const container = document.getElementById(containerId);
+            const div = document.createElement('div');
+            div.className = 'image-input';
+            div.innerHTML = `
+                <input type="url" placeholder="https://example.com/image.jpg" required>
+                <button class="btn btn-secondary" onclick="removeImageInput(this)">Remover</button>
+            `;
+            container.appendChild(div);
+        }
+
+        function removeImageInput(button) {
+            const container = button.parentElement.parentElement;
+            if (container.children.length > 1) {
+                button.parentElement.remove();
+            }
+        }
+
+        function showMessage(message, type = 'info') {
+            const messagesDiv = document.getElementById('messages');
+            const div = document.createElement('div');
+            div.className = type === 'error' ? 'error' : 'success';
+            div.textContent = message;
+            messagesDiv.appendChild(div);
+            
+            // Remover mensagem após 5 segundos
+            setTimeout(() => {
+                div.remove();
+            }, 5000);
+        }
+
+        function showProgress(show = true) {
+            const progressContainer = document.getElementById('progress-container');
+            progressContainer.style.display = show ? 'block' : 'none';
+            
+            if (!show) {
+                updateProgress(0, 'Preparando...');
+            }
+        }
+
+        function updateProgress(percentage, text) {
+            const progressFill = document.getElementById('progress-fill');
+            const progressText = document.getElementById('progress-text');
+            
+            progressFill.style.width = percentage + '%';
+            progressText.textContent = text;
+        }
+
+        function setLoading(elementId, loading) {
+            const loadingSpan = document.getElementById(elementId);
+            loadingSpan.style.display = loading ? 'inline-block' : 'none';
+        }
+
+        function getImageUrls(containerId) {
+            const container = document.getElementById(containerId);
+            const inputs = container.querySelectorAll('input[type="url"]');
+            return Array.from(inputs).map(input => input.value).filter(url => url.trim() !== '');
+        }
+
+        function displayVideo(videoUrl, title = 'Vídeo Criado') {
+            const videoContainer = document.getElementById('video-container');
+            videoContainer.innerHTML = `
+                <h3>${title}</h3>
+                <video controls width="100%" style="max-width: 800px;">
+                    <source src="${videoUrl}" type="video/mp4">
+                    Seu navegador não suporta o elemento de vídeo.
+                </video>
+                <p style="margin-top: 10px;">
+                    <a href="${videoUrl}" target="_blank" class="btn">Abrir em Nova Aba</a>
+                </p>
+            `;
+        }
+
+        async function pollRenderStatus(renderId) {
+            const statusMap = {
+                'queued': { percentage: 20, text: 'Na fila de processamento...' },
+                'fetching': { percentage: 40, text: 'Baixando recursos...' },
+                'rendering': { percentage: 70, text: 'Renderizando vídeo...' },
+                'saving': { percentage: 90, text: 'Salvando arquivo...' },
+                'done': { percentage: 100, text: 'Concluído!' }
+            };
+
+            const checkStatus = async () => {
+                try {
+                    const response = await fetch(`${API_BASE_URL}/api/shotstack/status/${renderId}`);
+                    const result = await response.json();
+                    
+                    if (result.success) {
+                        const status = result.data.status;
+                        const statusInfo = statusMap[status] || { percentage: 0, text: 'Processando...' };
+                        
+                        updateProgress(statusInfo.percentage, statusInfo.text);
+                        
+                        if (status === 'done') {
+                            return result.data.url;
+                        } else if (status === 'failed') {
+                            throw new Error(result.data.error || 'Renderização falhou');
+                        } else {
+                            // Aguardar 3 segundos e verificar novamente
+                            await new Promise(resolve => setTimeout(resolve, 3000));
+                            return await checkStatus();
+                        }
+                    } else {
+                        throw new Error(result.message);
+                    }
+                } catch (error) {
+                    throw new Error(`Erro ao verificar status: ${error.message}`);
+                }
+            };
+            
+            return await checkStatus();
+        }
+
+        // Função para criar slideshow
+        async function createSlideshow() {
+            const images = getImageUrls('slideshow-images');
+            const duration = parseInt(document.getElementById('slideshow-duration').value);
+            const transition = document.getElementById('slideshow-transition').value;
+            const soundtrack = document.getElementById('slideshow-soundtrack').value;
+            const text = document.getElementById('slideshow-text').value;
+            
+            if (images.length === 0) {
+                showMessage('Adicione pelo menos uma imagem', 'error');
+                return;
+            }
+            
+            setLoading('slideshow-loading', true);
+            showProgress(true);
+            
+            try {
+                const payload = {
+                    images: images,
+                    duration: duration,
+                    transition: transition,
+                    waitForCompletion: false,
+                    output: {
+                        format: 'mp4',
+                        resolution: 'hd'
+                    }
+                };
+                
+                if (soundtrack) {
+                    payload.soundtrack = soundtrack;
+                }
+                
+                if (text) {
+                    payload.textOverlay = {
+                        text: text,
+                        style: 'future',
+                        color: '#ffffff',
+                        size: 'large',
+                        start: 0,
+                        length: 3,
+                        position: 'center'
+                    };
+                }
+                
+                const response = await fetch(`${API_BASE_URL}/api/shotstack/slideshow`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(payload)
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    showMessage('Slideshow iniciado! Aguarde o processamento...', 'success');
+                    
+                    // Acompanhar progresso
+                    const videoUrl = await pollRenderStatus(result.id);
+                    displayVideo(videoUrl, 'Slideshow Criado');
+                    showMessage('Slideshow criado com sucesso!', 'success');
+                } else {
+                    throw new Error(result.message);
+                }
+            } catch (error) {
+                showMessage(`Erro ao criar slideshow: ${error.message}`, 'error');
+            } finally {
+                setLoading('slideshow-loading', false);
+                showProgress(false);
+            }
+        }
+
+        // Função para criar property showcase
+        async function createPropertyShowcase() {
+            const images = getImageUrls('showcase-images');
+            const title = document.getElementById('showcase-title').value;
+            const description = document.getElementById('showcase-description').value;
+            const duration = parseInt(document.getElementById('showcase-duration').value);
+            
+            if (images.length === 0) {
+                showMessage('Adicione pelo menos uma imagem', 'error');
+                return;
+            }
+            
+            if (!title) {
+                showMessage('Título da propriedade é obrigatório', 'error');
+                return;
+            }
+            
+            setLoading('showcase-loading', true);
+            showProgress(true);
+            
+            try {
+                const response = await fetch(`${API_BASE_URL}/api/shotstack/template/property-showcase`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        data: {
+                            images: images,
+                            title: title,
+                            description: description,
+                            duration: duration
+                        },
+                        output: {
+                            format: 'mp4',
+                            resolution: 'hd',
+                            aspectRatio: '16:9'
+                        },
+                        waitForCompletion: false
+                    })
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    showMessage('Property showcase iniciado! Aguarde o processamento...', 'success');
+                    
+                    // Acompanhar progresso
+                    const videoUrl = await pollRenderStatus(result.id);
+                    displayVideo(videoUrl, 'Property Showcase');
+                    showMessage('Property showcase criado com sucesso!', 'success');
+                } else {
+                    throw new Error(result.message);
+                }
+            } catch (error) {
+                showMessage(`Erro ao criar property showcase: ${error.message}`, 'error');
+            } finally {
+                setLoading('showcase-loading', false);
+                showProgress(false);
+            }
+        }
+
+        // Função para criar timeline personalizada
+        async function createCustomTimeline() {
+            const timelineJson = document.getElementById('custom-timeline').value;
+            const format = document.getElementById('custom-format').value;
+            const resolution = document.getElementById('custom-resolution').value;
+            
+            if (!timelineJson.trim()) {
+                showMessage('Configuração JSON da timeline é obrigatória', 'error');
+                return;
+            }
+            
+            let timeline;
+            try {
+                timeline = JSON.parse(timelineJson);
+            } catch (error) {
+                showMessage('JSON inválido na timeline', 'error');
+                return;
+            }
+            
+            setLoading('custom-loading', true);
+            showProgress(true);
+            
+            try {
+                const response = await fetch(`${API_BASE_URL}/api/shotstack/render`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        timeline: timeline,
+                        output: {
+                            format: format,
+                            resolution: resolution
+                        }
+                    })
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    showMessage('Timeline personalizada iniciada! Aguarde o processamento...', 'success');
+                    
+                    // Acompanhar progresso
+                    const videoUrl = await pollRenderStatus(result.id);
+                    displayVideo(videoUrl, 'Vídeo Personalizado');
+                    showMessage('Vídeo personalizado criado com sucesso!', 'success');
+                } else {
+                    throw new Error(result.message);
+                }
+            } catch (error) {
+                showMessage(`Erro ao criar vídeo personalizado: ${error.message}`, 'error');
+            } finally {
+                setLoading('custom-loading', false);
+                showProgress(false);
+            }
+        }
+
+        // Preencher exemplos ao carregar a página
+        document.addEventListener('DOMContentLoaded', function() {
+            // Exemplos para slideshow
+            const slideshowInputs = document.querySelectorAll('#slideshow-images input[type="url"]');
+            slideshowInputs[0].value = 'https://images.unsplash.com/photo-1560448204-e02f11c3d0e2?w=1200';
+            slideshowInputs[1].value = 'https://images.unsplash.com/photo-1586023492125-27b2c045efd7?w=1200';
+            
+            // Exemplos para showcase
+            const showcaseInputs = document.querySelectorAll('#showcase-images input[type="url"]');
+            showcaseInputs[0].value = 'https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?w=1200';
+            showcaseInputs[1].value = 'https://images.unsplash.com/photo-1600607687939-ce8a6c25118c?w=1200';
+            
+            document.getElementById('showcase-title').value = 'Apartamento Moderno';
+            document.getElementById('showcase-description').value = 'Vista para o parque, 2 quartos, 1 banheiro';
+            
+            // Exemplo para timeline personalizada
+            document.getElementById('custom-timeline').value = JSON.stringify({
+                tracks: [
+                    {
+                        clips: [
+                            {
+                                asset: {
+                                    type: "image",
+                                    src: "https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?w=1200"
+                                },
+                                start: 0,
+                                length: 5,
+                                effect: "zoomIn"
+                            }
+                        ]
+                    },
+                    {
+                        clips: [
+                            {
+                                asset: {
+                                    type: "title",
+                                    text: "Casa dos Sonhos",
+                                    style: "future",
+                                    color: "#ffffff",
+                                    size: "large"
+                                },
+                                start: 1,
+                                length: 3,
+                                position: "center"
+                            }
+                        ]
+                    }
+                ]
+            }, null, 2);
+        });
+    </script>
+</body>
+</html>

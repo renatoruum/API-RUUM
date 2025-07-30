@@ -1,0 +1,764 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Editor de Vídeos - ShotStack Integration</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        .section {
+            margin-bottom: 30px;
+            padding: 20px;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+        }
+        
+        .section h3 {
+            margin-top: 0;
+            color: #333;
+        }
+        
+        .input-group {
+            margin-bottom: 15px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #555;
+        }
+        
+        input[type="url"], input[type="number"], select {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        
+        .video-item, .audio-item {
+            background: #f9f9f9;
+            padding: 15px;
+            margin-bottom: 10px;
+            border-radius: 6px;
+            border-left: 4px solid #007bff;
+        }
+        
+        .video-item h4, .audio-item h4 {
+            margin-top: 0;
+            color: #007bff;
+        }
+        
+        .btn {
+            background: #007bff;
+            color: white;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 5px;
+        }
+        
+        .btn:hover {
+            background: #0056b3;
+        }
+        
+        .btn-secondary {
+            background: #6c757d;
+        }
+        
+        .btn-secondary:hover {
+            background: #545b62;
+        }
+        
+        .btn-success {
+            background: #28a745;
+        }
+        
+        .btn-success:hover {
+            background: #218838;
+        }
+        
+        .status {
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 4px;
+            display: none;
+        }
+        
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        
+        .status.info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+        
+        .progress {
+            width: 100%;
+            height: 20px;
+            background: #e9ecef;
+            border-radius: 10px;
+            overflow: hidden;
+            margin: 10px 0;
+        }
+        
+        .progress-bar {
+            height: 100%;
+            background: #007bff;
+            transition: width 0.3s ease;
+            text-align: center;
+            line-height: 20px;
+            color: white;
+            font-size: 12px;
+        }
+        
+        .video-preview {
+            margin-top: 20px;
+            text-align: center;
+        }
+        
+        .video-preview video {
+            max-width: 100%;
+            height: auto;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎬 Editor de Vídeos com ShotStack</h1>
+        <p>Envie múltiplos vídeos e áudios para criar um vídeo editado profissional</p>
+        
+        <!-- Seção de Vídeos -->
+        <div class="section">
+            <h3>📹 Vídeos</h3>
+            <div id="videos-container">
+                <div class="video-item">
+                    <h4>Vídeo 1</h4>
+                    <div class="input-group">
+                        <label>URL do Vídeo:</label>
+                        <input type="url" class="video-url" placeholder="https://exemplo.com/video1.mp4" required>
+                    </div>
+                    <div class="input-group">
+                        <label>Duração (segundos):</label>
+                        <input type="number" class="video-duration" min="1" value="10" required>
+                    </div>
+                </div>
+            </div>
+            <button type="button" class="btn btn-secondary" onclick="adicionarVideo()">+ Adicionar Vídeo</button>
+        </div>
+        
+        <!-- Seção de Áudios -->
+        <div class="section">
+            <h3>🎵 Áudios (Narração)</h3>
+            <div id="audios-container">
+                <div class="audio-item">
+                    <h4>Áudio 1</h4>
+                    <div class="input-group">
+                        <label>URL do Áudio:</label>
+                        <input type="url" class="audio-url" placeholder="https://exemplo.com/narracao1.mp3" required>
+                    </div>
+                    <div class="input-group">
+                        <label>Volume (0.1 a 1.0):</label>
+                        <input type="number" class="audio-volume" min="0.1" max="1.0" step="0.1" value="0.8">
+                    </div>
+                </div>
+            </div>
+            <button type="button" class="btn btn-secondary" onclick="adicionarAudio()">+ Adicionar Áudio</button>
+        </div>
+        
+        <!-- Seção de Música de Fundo -->
+        <div class="section">
+            <h3>🎼 Música de Fundo (Opcional)</h3>
+            <div class="input-group">
+                <label>URL da Música:</label>
+                <input type="url" id="musica-fundo" placeholder="https://exemplo.com/musica-fundo.mp3">
+            </div>
+            <div class="input-group">
+                <label>Volume da Música (0.1 a 1.0):</label>
+                <input type="number" id="musica-volume" min="0.1" max="1.0" step="0.1" value="0.3">
+            </div>
+        </div>
+        
+        <!-- Configurações de Output -->
+        <div class="section">
+            <h3>⚙️ Configurações de Saída</h3>
+            <div class="input-group">
+                <label>Resolução:</label>
+                <select id="resolucao">
+                    <option value="preview">Preview (512x288)</option>
+                    <option value="mobile">Mobile (640x360)</option>
+                    <option value="sd">SD (1024x576)</option>
+                    <option value="hd" selected>HD (1280x720)</option>
+                    <option value="1080">Full HD (1920x1080)</option>
+                </select>
+            </div>
+            <div class="input-group">
+                <label>Formato:</label>
+                <select id="formato">
+                    <option value="mp4" selected>MP4</option>
+                    <option value="gif">GIF</option>
+                </select>
+            </div>
+        </div>
+        
+        <!-- Botões de Ação -->
+        <div class="section">
+            <button type="button" class="btn btn-success" onclick="renderizarVideo()">🚀 Renderizar Vídeo</button>
+            <button type="button" class="btn btn-secondary" onclick="preencherExemplo()">📝 Preencher Exemplo</button>
+            <button type="button" class="btn btn-secondary" onclick="limparFormulario()">🗑️ Limpar</button>
+        </div>
+        
+        <!-- Status da Renderização -->
+        <div id="status" class="status"></div>
+        
+        <!-- Interface de Polling em Tempo Real -->
+        <div id="polling-status"></div>
+        
+        <!-- Barra de Progresso Legacy (mantida para compatibilidade) -->
+        <div id="progress-container" style="display: none;">
+            <div class="progress">
+                <div id="progress-bar" class="progress-bar" style="width: 0%">0%</div>
+            </div>
+            <p id="progress-text">Iniciando renderização...</p>
+        </div>
+        
+        <!-- Preview do Vídeo -->
+        <div id="video-result" class="video-preview" style="display: none;">
+            <h3>🎉 Vídeo Finalizado!</h3>
+            <video id="resultado-video" controls>
+                Seu navegador não suporta o elemento de vídeo.
+            </video>
+            <br><br>
+            <a id="download-link" class="btn btn-success" download>📥 Baixar Vídeo</a>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="shotstack-polling.js"></script>
+    <script>
+        let videoCount = 1;
+        let audioCount = 1;
+        let renderizacaoAtiva = false;
+        
+        // Inicializar sistema de polling
+        let shotstackPolling;
+        let statusUI;
+        
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('Editor de Vídeos ShotStack carregado!');
+            
+            // Configurar polling com callbacks
+            shotstackPolling = new ShotstackPolling({
+                baseUrl: '/api',
+                interval: 3000, // 3 segundos
+                onProgress: (renderId, progress) => {
+                    console.log(`📊 Progresso ${renderId}: ${progress.progress}% - ${progress.progressText}`);
+                    
+                    // Atualizar barra de progresso legacy também
+                    atualizarProgresso(progress.progress, progress.progressText);
+                },
+                onComplete: (renderId, url) => {
+                    console.log(`✅ Concluído ${renderId}: ${url}`);
+                    mostrarVideoFinalizado(url);
+                    mostrarStatus('Vídeo renderizado com sucesso!', 'success');
+                    renderizacaoAtiva = false;
+                },
+                onError: (renderId, error) => {
+                    console.error(`❌ Erro ${renderId}:`, error);
+                    mostrarStatus(`Erro: ${error.message}`, 'error');
+                    renderizacaoAtiva = false;
+                    esconderProgresso();
+                },
+                onStatusChange: (renderId, status) => {
+                    console.log(`🔄 Status mudou ${renderId}: ${status}`);
+                }
+            });
+            
+            // Inicializar UI de status
+            statusUI = new ShotstackStatusUI('polling-status', shotstackPolling);
+            
+            // Adicionar controles de polling
+            adicionarControlesDePolling();
+            
+            // Tornar disponível globalmente para os botões
+            window.shotstackPolling = shotstackPolling;
+            window.statusUI = statusUI;
+        });
+
+        // Adicionar novo campo de vídeo
+        function adicionarVideo() {
+            videoCount++;
+            const container = document.getElementById('videos-container');
+            const div = document.createElement('div');
+            div.className = 'video-item';
+            div.innerHTML = `
+                <h4>Vídeo ${videoCount}
+                    <button type="button" style="float: right; background: #dc3545; color: white; border: none; border-radius: 3px; padding: 5px 10px; cursor: pointer;" onclick="this.parentElement.parentElement.remove()">Remover</button>
+                </h4>
+                <div class="input-group">
+                    <label>URL do Vídeo:</label>
+                    <input type="url" class="video-url" placeholder="https://exemplo.com/video${videoCount}.mp4" required>
+                </div>
+                <div class="input-group">
+                    <label>Duração (segundos):</label>
+                    <input type="number" class="video-duration" min="1" value="10" required>
+                </div>
+            `;
+            container.appendChild(div);
+        }
+
+        // Adicionar novo campo de áudio
+        function adicionarAudio() {
+            audioCount++;
+            const container = document.getElementById('audios-container');
+            const div = document.createElement('div');
+            div.className = 'audio-item';
+            div.innerHTML = `
+                <h4>Áudio ${audioCount}
+                    <button type="button" style="float: right; background: #dc3545; color: white; border: none; border-radius: 3px; padding: 5px 10px; cursor: pointer;" onclick="this.parentElement.parentElement.remove()">Remover</button>
+                </h4>
+                <div class="input-group">
+                    <label>URL do Áudio:</label>
+                    <input type="url" class="audio-url" placeholder="https://exemplo.com/narracao${audioCount}.mp3" required>
+                </div>
+                <div class="input-group">
+                    <label>Volume (0.1 a 1.0):</label>
+                    <input type="number" class="audio-volume" min="0.1" max="1.0" step="0.1" value="0.8">
+                </div>
+            `;
+            container.appendChild(div);
+        }
+
+        // Preencher com dados de exemplo
+        function preencherExemplo() {
+            // URLs de exemplo (substitua por URLs reais)
+            const videosExemplo = [
+                'https://shotstack-assets.s3-ap-southeast-2.amazonaws.com/footage/beach-overhead.mp4',
+                'https://shotstack-assets.s3-ap-southeast-2.amazonaws.com/footage/city-timelapse.mp4'
+            ];
+            
+            const audiosExemplo = [
+                'https://shotstack-assets.s3-ap-southeast-2.amazonaws.com/audio/voiceover-male.mp3',
+                'https://shotstack-assets.s3-ap-southeast-2.amazonaws.com/audio/voiceover-female.mp3'
+            ];
+
+            // Preencher vídeos
+            const videoUrls = document.querySelectorAll('.video-url');
+            const videoDurations = document.querySelectorAll('.video-duration');
+            
+            videoUrls.forEach((input, index) => {
+                if (videosExemplo[index]) {
+                    input.value = videosExemplo[index];
+                }
+            });
+
+            videoDurations.forEach(input => {
+                input.value = 10;
+            });
+
+            // Preencher áudios
+            const audioUrls = document.querySelectorAll('.audio-url');
+            audioUrls.forEach((input, index) => {
+                if (audiosExemplo[index]) {
+                    input.value = audiosExemplo[index];
+                }
+            });
+
+            // Música de fundo
+            document.getElementById('musica-fundo').value = 'https://shotstack-assets.s3-ap-southeast-2.amazonaws.com/music/unminus/happy.mp3';
+            
+            mostrarStatus('Exemplo preenchido! Agora você pode renderizar o vídeo.', 'info');
+        }
+
+        // Limpar formulário
+        function limparFormulario() {
+            document.querySelectorAll('input[type="url"], input[type="number"]').forEach(input => {
+                if (input.id !== 'musica-volume' && !input.classList.contains('audio-volume')) {
+                    input.value = '';
+                } else if (input.classList.contains('audio-volume')) {
+                    input.value = '0.8';
+                } else if (input.id === 'musica-volume') {
+                    input.value = '0.3';
+                }
+            });
+            
+            document.querySelectorAll('.video-duration').forEach(input => {
+                input.value = '10';
+            });
+
+            esconderStatus();
+            esconderProgresso();
+            esconderVideoResultado();
+            
+            // Parar todos os pollings ativos
+            if (window.shotstackPolling) {
+                shotstackPolling.stopAllPolling();
+            }
+            
+            // Limpar UI de status
+            if (window.statusUI) {
+                statusUI.clearAll();
+            }
+        }
+
+        // Função para parar renderização específica
+        function pararRenderizacao(renderId) {
+            if (window.shotstackPolling) {
+                shotstackPolling.stopPolling(renderId);
+                mostrarStatus(`Monitoramento da renderização ${renderId} foi interrompido`, 'info');
+            }
+        }
+
+        // Função para verificar status manual
+        async function verificarStatusManual(renderId) {
+            try {
+                const response = await fetch(`/api/shotstack/status/${renderId}`);
+                const data = await response.json();
+                
+                if (data.success) {
+                    mostrarStatus(`Status: ${data.status} - ${data.progressText}`, 'info');
+                    console.log('Status detalhado:', data);
+                } else {
+                    mostrarStatus(`Erro ao verificar status: ${data.message}`, 'error');
+                }
+            } catch (error) {
+                mostrarStatus(`Erro na verificação: ${error.message}`, 'error');
+            }
+        }
+
+        // Função para adicionar botões de controle
+        function adicionarControlesDePolling() {
+            const container = document.querySelector('.section:last-of-type');
+            if (container && !document.getElementById('polling-controls')) {
+                const controlsDiv = document.createElement('div');
+                controlsDiv.id = 'polling-controls';
+                controlsDiv.innerHTML = `
+                    <hr style="margin: 20px 0;">
+                    <h4>🔧 Controles de Monitoramento</h4>
+                    <button type="button" class="btn btn-secondary" onclick="pararTodosPollings()">⏹️ Parar Todos</button>
+                    <button type="button" class="btn btn-secondary" onclick="limparStatusUI()">🗑️ Limpar Lista</button>
+                    <button type="button" class="btn btn-secondary" onclick="mostrarRenderizacoesAtivas()">📊 Ver Ativos</button>
+                `;
+                container.appendChild(controlsDiv);
+            }
+        }
+
+        // Funções auxiliares para controles
+        function pararTodosPollings() {
+            if (window.shotstackPolling) {
+                shotstackPolling.stopAllPolling();
+                mostrarStatus('Todos os monitoramentos foram interrompidos', 'info');
+            }
+        }
+
+        function limparStatusUI() {
+            if (window.statusUI) {
+                statusUI.clearAll();
+                mostrarStatus('Lista de status limpa', 'info');
+            }
+        }
+
+        function mostrarRenderizacoesAtivas() {
+            if (window.shotstackPolling) {
+                const ativos = shotstackPolling.getActivePolls();
+                if (ativos.length > 0) {
+                    mostrarStatus(`Renderizações ativas: ${ativos.join(', ')}`, 'info');
+                } else {
+                    mostrarStatus('Nenhuma renderização sendo monitorada', 'info');
+                }
+            }
+        }
+
+        // Renderizar vídeo
+        async function renderizarVideo() {
+            if (renderizacaoAtiva) {
+                mostrarStatus('Uma renderização já está em andamento. Aguarde a conclusão.', 'info');
+                return;
+            }
+
+            try {
+                // Coletar dados do formulário
+                const dados = coletarDadosFormulario();
+                
+                // Validar dados
+                if (!validarDados(dados)) {
+                    return;
+                }
+
+                renderizacaoAtiva = true;
+                mostrarProgresso();
+                atualizarProgresso(0, 'Iniciando renderização...');
+
+                // Criar timeline
+                const timeline = criarTimeline(dados);
+                
+                const output = {
+                    format: document.getElementById('formato').value,
+                    resolution: document.getElementById('resolucao').value
+                };
+
+                // Enviar para o backend
+                mostrarStatus('Enviando dados para renderização...', 'info');
+                atualizarProgresso(10, 'Enviando dados...');
+
+                const response = await fetch('/api/shotstack/render', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ timeline, output })
+                });
+
+                const result = await response.json();
+
+                if (!result.success) {
+                    throw new Error(result.message || 'Erro desconhecido na renderização');
+                }
+
+                mostrarStatus(`Renderização iniciada! ID: ${result.renderId}`, 'success');
+                
+                // Adicionar à UI de status
+                statusUI.addRender(result.renderId);
+                
+                // Iniciar polling inteligente (SSE com fallback para manual)
+                console.log('🚀 Iniciando monitoramento em tempo real...');
+                
+                try {
+                    const videoUrl = await shotstackPolling.startSmartPolling(result.renderId);
+                    console.log('🎉 Vídeo finalizado com sucesso:', videoUrl);
+                } catch (pollingError) {
+                    console.error('Erro no polling:', pollingError);
+                    // O erro já foi tratado pelos callbacks
+                }
+
+            } catch (error) {
+                console.error('Erro:', error);
+                mostrarStatus(`Erro: ${error.message}`, 'error');
+                renderizacaoAtiva = false;
+                esconderProgresso();
+            }
+        }
+
+        // Coletar dados do formulário
+        function coletarDadosFormulario() {
+            const videoUrls = Array.from(document.querySelectorAll('.video-url')).map(input => input.value.trim());
+            const videoDurations = Array.from(document.querySelectorAll('.video-duration')).map(input => parseInt(input.value));
+            const audioUrls = Array.from(document.querySelectorAll('.audio-url')).map(input => input.value.trim());
+            const audioVolumes = Array.from(document.querySelectorAll('.audio-volume')).map(input => parseFloat(input.value));
+            const musicaFundo = document.getElementById('musica-fundo').value.trim();
+            const musicaVolume = parseFloat(document.getElementById('musica-volume').value);
+
+            return {
+                videos: videoUrls.filter(url => url),
+                duracoes: videoDurations,
+                audios: audioUrls.filter(url => url),
+                volumes: audioVolumes,
+                musicaFundo,
+                musicaVolume
+            };
+        }
+
+        // Validar dados
+        function validarDados(dados) {
+            if (dados.videos.length === 0) {
+                mostrarStatus('Erro: Pelo menos um vídeo deve ser informado.', 'error');
+                return false;
+            }
+
+            if (dados.audios.length !== dados.videos.length) {
+                mostrarStatus('Erro: O número de áudios deve ser igual ao número de vídeos.', 'error');
+                return false;
+            }
+
+            // Validar URLs
+            const todasUrls = [...dados.videos, ...dados.audios];
+            if (dados.musicaFundo) todasUrls.push(dados.musicaFundo);
+
+            const urlPattern = /^https?:\/\/.+/;
+            const urlsInvalidas = todasUrls.filter(url => !urlPattern.test(url));
+            
+            if (urlsInvalidas.length > 0) {
+                mostrarStatus(`Erro: URLs inválidas encontradas: ${urlsInvalidas.join(', ')}`, 'error');
+                return false;
+            }
+
+            return true;
+        }
+
+        // Criar timeline para o ShotStack
+        function criarTimeline(dados) {
+            const timeline = {
+                tracks: []
+            };
+
+            let tempoAtual = 0;
+
+            // Track principal de vídeos
+            timeline.tracks.push({
+                clips: dados.videos.map((videoUrl, index) => {
+                    const clip = {
+                        asset: {
+                            type: "video",
+                            src: videoUrl
+                        },
+                        start: tempoAtual,
+                        length: dados.duracoes[index]
+                    };
+                    tempoAtual += dados.duracoes[index];
+                    return clip;
+                })
+            });
+
+            // Reset tempo para áudios
+            tempoAtual = 0;
+
+            // Tracks de áudio individuais
+            dados.audios.forEach((audioUrl, index) => {
+                timeline.tracks.push({
+                    clips: [{
+                        asset: {
+                            type: "audio",
+                            src: audioUrl
+                        },
+                        start: tempoAtual,
+                        length: dados.duracoes[index],
+                        volume: dados.volumes[index] || 0.8
+                    }]
+                });
+                tempoAtual += dados.duracoes[index];
+            });
+
+            // Música de fundo
+            if (dados.musicaFundo) {
+                const duracaoTotal = dados.duracoes.reduce((a, b) => a + b, 0);
+                timeline.tracks.push({
+                    clips: [{
+                        asset: {
+                            type: "audio",
+                            src: dados.musicaFundo
+                        },
+                        start: 0,
+                        length: duracaoTotal,
+                        volume: dados.musicaVolume
+                    }]
+                });
+            }
+
+            return timeline;
+        }
+
+        // Aguardar renderização
+        async function aguardarRenderizacao(renderId) {
+            const maxTentativas = 60; // 5 minutos
+            let tentativas = 0;
+            let progresso = 20;
+
+            while (tentativas < maxTentativas) {
+                try {
+                    const response = await fetch(`/api/shotstack/status/${renderId}`);
+                    const status = await response.json();
+
+                    console.log(`Status: ${status.status}`);
+
+                    // Atualizar progresso
+                    progresso = Math.min(90, 20 + (tentativas * 2));
+                    atualizarProgresso(progresso, `Status: ${status.status}`);
+
+                    if (status.status === 'done') {
+                        atualizarProgresso(100, 'Concluído!');
+                        return status.url;
+                    } else if (status.status === 'failed') {
+                        throw new Error(status.error || 'Renderização falhou');
+                    }
+
+                    await new Promise(resolve => setTimeout(resolve, 5000));
+                    tentativas++;
+
+                } catch (error) {
+                    console.error('Erro ao verificar status:', error);
+                    tentativas++;
+                }
+            }
+
+            throw new Error('Timeout: renderização demorou mais que o esperado');
+        }
+
+        // Utilitários de UI
+        function mostrarStatus(mensagem, tipo) {
+            const statusEl = document.getElementById('status');
+            statusEl.textContent = mensagem;
+            statusEl.className = `status ${tipo}`;
+            statusEl.style.display = 'block';
+        }
+
+        function esconderStatus() {
+            document.getElementById('status').style.display = 'none';
+        }
+
+        function mostrarProgresso() {
+            document.getElementById('progress-container').style.display = 'block';
+        }
+
+        function esconderProgresso() {
+            document.getElementById('progress-container').style.display = 'none';
+        }
+
+        function atualizarProgresso(percentual, texto) {
+            const progressBar = document.getElementById('progress-bar');
+            const progressText = document.getElementById('progress-text');
+            
+            progressBar.style.width = `${percentual}%`;
+            progressBar.textContent = `${percentual}%`;
+            progressText.textContent = texto;
+        }
+
+        function mostrarVideoFinalizado(url) {
+            const videoEl = document.getElementById('resultado-video');
+            const downloadEl = document.getElementById('download-link');
+            const containerEl = document.getElementById('video-result');
+            
+            videoEl.src = url;
+            downloadEl.href = url;
+            containerEl.style.display = 'block';
+        }
+
+        function esconderVideoResultado() {
+            document.getElementById('video-result').style.display = 'none';
+        }
+
+        // Inicialização
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('Editor de Vídeos ShotStack carregado!');
+        });
+    </script>
+</body>
+</html>

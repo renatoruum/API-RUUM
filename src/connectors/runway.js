@@ -65,7 +65,7 @@ export async function imageToVideoWithRunway(options) {
             promptImage,
             promptText,
             ratio = '1280:720',
-            duration = 5,
+            duration,
             model = 'gen4_turbo'
         } = options;
 

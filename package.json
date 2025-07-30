@@ -7,7 +7,15 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "node src/app.js",
-    "dev": "nodemon src/app.js"
+    "dev": "nodemon src/app.js",
+    "watch": "nodemon src/app.js",
+    "diagnose-shotstack": "node scripts/diagnose-shotstack.js",
+    "test:shotstack": "node scripts/diagnose-shotstack.js --quick",
+    "test:shotstack-full": "node scripts/diagnose-shotstack.js",
+    "health": "curl -X GET http://localhost:3000/api/health || echo 'Server not running'",
+    "logs": "tail -f logs/*.log || echo 'No logs found'",
+    "check-auth": "curl -X GET http://localhost:3000/api/shotstack/test-auth",
+    "check-render": "curl -X POST http://localhost:3000/api/shotstack/test-render -H 'Content-Type: application/json'"
   },
   "keywords": [],
   "author": "",
@@ -24,11 +32,12 @@
     "file-type": "^20.5.0",
     "form-data": "^4.0.2",
     "fs": "^0.0.1-security",
-    "multer": "^2.0.1",
+    "multer": "^2.0.2",
     "node-fetch": "^2.7.0",
     "openai": "^4.96.0",
     "sharp": "^0.34.1",
     "tmp": "^0.2.3",
+    "uuid": "^11.1.0",
     "xml2js": "^0.6.2"
   },
   "devDependencies": {

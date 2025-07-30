@@ -1,0 +1,50 @@
+{
+  "timestamp": "2025-07-14T16:32:27.687Z",
+  "environment": {
+    "nodeVersion": "v20.19.0",
+    "platform": "darwin",
+    "apiKey": "DEFINIDA",
+    "apiKeyPreview": "3USHaD92ZU..."
+  },
+  "tests": {
+    "authentication": {
+      "success": true,
+      "status": 400,
+      "data": {
+        "success": true,
+        "message": "Bad Request",
+        "response": {
+          "error": {
+            "name": "ValidationError",
+            "details": [
+              {
+                "message": "\"timeline\" is required",
+                "path": [
+                  "timeline"
+                ],
+                "type": "any.required"
+              }
+            ]
+          }
+        }
+      },
+      "message": "Autenticação ShotStack funcionando (testado com payload vazio)"
+    },
+    "rendering": {
+      "success": false,
+      "error": "Request failed with status code 403",
+      "message": "Sem permissão para renderizar - verifique créditos ou plano da conta",
+      "details": {
+        "status": 403,
+        "statusText": "Forbidden",
+        "responseData": {
+          "success": false,
+          "message": "Forbidden",
+          "response": {
+            "error": "Your render request could not be processed because it exceeds one or more plan limits. At least 1 credit is required to use the sandbox environment. You have '0' credits. Please upgrade to increase your plan limits: https://dashboard.shotstack.io/subscription."
+          }
+        }
+      }
+    }
+  }
+}

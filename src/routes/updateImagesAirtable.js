@@ -11,14 +11,14 @@ router.post("/update-images-airtable", async (req, res) => {
     const imagesArray = req.body.imagesArray || req.body;
     
     // Passa os parâmetros adicionais para a função
-    const { email, clientId, invoiceId, userId } = req.body;
+    const { email, clientId, invoiceId, userId, table } = req.body;
     
     if (!Array.isArray(imagesArray) || imagesArray.length === 0) {
       return res.status(400).json({ success: false, message: "Body must be a non-empty array of images" });
     }
 
     console.log(`Starting to process ${imagesArray.length} images`);
-    const results = await upsetImagesInAirtable(imagesArray, email, clientId, invoiceId, userId);
+    const results = await upsetImagesInAirtable(imagesArray, email, clientId, invoiceId, userId, table);
     
     // Conta sucessos e erros
     const successCount = results.filter(r => r.status === 'created' || r.status === 'updated').length;

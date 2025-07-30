@@ -33,9 +33,9 @@ export async function getDataFromAirtable() {
 }
 
 export async function upsetImovelInAirtable(imovel) {
-    const tableName = "ACasa7";
+    const tableName = "Luagge";
     const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(process.env.AIRTABLE_BASE_ID);
-    const client = "A Casa 7";
+    const client = "Luagge Imóveis";
 
     const isKenlo = !!imovel.CodigoImovel;
 
@@ -108,39 +108,184 @@ export async function upsetImagesInAirtable(
     customEmail,
     customClientId,
     customInvoiceId,
-    customUserId
+    customUserId,
+    imageTable
 ) {
-    const tableName = "Images";
+    const tableName = imageTable || "Images";
     const baseInstance = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(process.env.AIRTABLE_BASE_ID);
-    
+
     // Usar valores personalizados do frontend se fornecidos, ou valores padrão caso contrário
-    const email = customEmail
-    const clientId = customClientId
-    const invoiceId = customInvoiceId
-    const userId = customUserId
+    const email = customEmail || ""
+    const clientId = customClientId || ""
+    const invoiceId = customInvoiceId || ""
+    const userId = customUserId || ""
 
     const results = [];
-    
-    for (let i = 0; i < imagesArray.length; i++) {
-        const img = imagesArray[i];
+
+    // Função para validar campos de single select - só inclui se tiver valor válido
+    const getSelectValue = (value) => {
+        if (!value) return null;
+        // Remove aspas duplas extras e espaços em branco
+        const cleanValue = value.toString().replace(/^"+|"+$/g, '').trim();
+        return cleanValue !== '' ? cleanValue : null;
+    };
+
+    // Lógica especial para "Image suggestions" - criar apenas um registro com todas as imagens
+    if (tableName === "Image suggestions") {
+        console.log(`Processing ${imagesArray.length} images as single record for Image suggestions`);
         
         try {
-            console.log(`Processing image ${i + 1}/${imagesArray.length}:`, img.imgUrl);
+            // Busca registro existente (temporariamente desabilitado para sempre criar novos registros)
+            const records = [];
+
+            // Coletar todas as imagens para o campo INPUT IMAGE
+            const allImages = [];
             
+            // Verificar se há imgUrls (array) ou imgUrl (string único)
+            if (imagesArray[0].imgUrls && Array.isArray(imagesArray[0].imgUrls)) {
+                // Usar todas as URLs do array imgUrls
+                imagesArray[0].imgUrls.forEach(url => {
+                    if (url) allImages.push({ url: url });
+                });
+            } else {
+                // Fallback para o formato antigo (imgUrl por item)
+                imagesArray
+                    .filter(img => img.imgUrl) // Só inclui imagens com URL válida
+                    .forEach(img => allImages.push({ url: img.imgUrl }));
+            }
+
+            // Usar dados da primeira imagem como base para outros campos
+            const firstImg = imagesArray[0];
+            const encodedUrl = firstImg.imagensReferencia ? encodeURI(firstImg.imagensReferencia) : '';
+
+            const fields = {
+                Clients: [clientId],
+                ["Property's URL"]: firstImg.propertyUrl || '',
+                ["INPUT IMAGE"]: allImages, // Todas as imagens em um campo
+                ["Owner Email"]: email,
+                ["Client Internal Code"]: firstImg.codigo || '',
+                Message: firstImg.observacoes || '',
+            };
+
+            // Adicionar outros campos baseados na primeira imagem
+            if (encodedUrl) {
+                fields["ADDITIONAL ATTACHMENTS"] = [{ url: encodedUrl }];
+            }
+
+            const imageWorkflow = getSelectValue(firstImg.imgWorkflow);
+            if (imageWorkflow) {
+                let workflowValue = imageWorkflow;
+                if (imageWorkflow === "Atelier") {
+                    workflowValue = "Boutique workflow";
+                } else if (imageWorkflow === "SmartStage") {
+                    workflowValue = "Imob workflow";
+                }
+                fields["Image_workflow"] = workflowValue;
+            }
+
+            const suggestionstatus = getSelectValue(firstImg.suggestionstatus);
+            if (suggestionstatus) {
+                fields["Suggestion Status"] = suggestionstatus;
+            }
+
+            // Adicionar campos específicos que estavam faltando
+            let destaques = firstImg.destaques;
+            if (Array.isArray(destaques) && destaques.length > 0) {
+                // Remove valores vazios e normaliza para string
+                fields["Destaques"] = destaques.filter(d => typeof d === "string" && d.trim() !== "");
+            } else if (typeof destaques === "string" && destaques.trim() !== "") {
+                fields["Destaques"] = [destaques.trim()];
+            }
+
+            const endereco = getSelectValue(firstImg.endereco);
+            if (endereco) {
+                fields["Endereço"] = endereco;
+            }
+
+            const preco = getSelectValue(firstImg.preco);
+            if (preco) {
+                // Converte para número, removendo possíveis caracteres não numéricos (exceto ponto e vírgula)
+                const precoNumber = Number(
+                    preco
+                        .toString()
+                        .replace(/\./g, '') // remove pontos de milhar
+                        .replace(',', '.')  // troca vírgula decimal por ponto
+                        .replace(/[^\d.-]/g, '') // remove outros caracteres
+                );
+                if (!isNaN(precoNumber)) {
+                    fields["Preço"] = precoNumber;
+                }
+            }
+
+            // Adicionar outros campos que podem estar presentes
+            const roomType = getSelectValue(firstImg.tipo);
+            if (roomType) {
+                fields["Room Type"] = roomType;
+            }
+
+            const finish = getSelectValue(firstImg.acabamento);
+            if (finish) {
+                fields["Finish"] = finish;
+            }
+
+            const estilo = getSelectValue(firstImg.estilo);
+            if (estilo) {
+                try {
+                    // Buscar o record ID na tabela de estilos
+                    const styleRecords = await baseInstance("Styles").select({
+                        filterByFormula: `{Style Name} = '${estilo}'`,
+                        maxRecords: 1
+                    }).firstPage();
+
+                    if (styleRecords.length > 0) {
+                        fields["STYLE"] = [styleRecords[0].id]; // Passar como array com o Record ID
+                    }
+                } catch (styleError) {
+                    console.error(`Erro ao buscar estilo '${estilo}':`, styleError.message);
+                }
+            }
+
+            console.log(`Fields being sent for Image suggestions (${allImages.length} images):`, JSON.stringify(fields, null, 2));
+
+            // Criar registro único
+            const result = await baseInstance(tableName).create(fields);
+            console.log(`✅ Image suggestions record created successfully with ${allImages.length} images:`, result.id);
+            results.push({ 
+                index: 0, 
+                status: 'created', 
+                id: result.id, 
+                imageCount: allImages.length,
+                imgUrls: imagesArray[0].imgUrls || imagesArray.map(img => img.imgUrl)
+            });
+
+        } catch (error) {
+            console.error(`❌ Error processing Image suggestions record:`, error.message);
+            results.push({ 
+                index: 0, 
+                status: 'error', 
+                error: error.message, 
+                imageCount: imagesArray.length,
+                imgUrls: imagesArray[0].imgUrls || imagesArray.map(img => img.imgUrl)
+            });
+        }
+
+        console.log(`Processing complete for Image suggestions. Results:`, results);
+        return results;
+    }
+
+    // Lógica original para outras tabelas
+    for (let i = 0; i < imagesArray.length; i++) {
+        const img = imagesArray[i];
+
+        try {
+            console.log(`Processing image ${i + 1}/${imagesArray.length}:`, img.imgUrl);
+
             // Busca registro existente pelo campo 'Client Internal Code' e 'INPUT IMAGE'
             // Temporariamente desabilitado para sempre criar novos registros
             const records = [];
-            /*
-            const records = await baseInstance(tableName)
-                .select({
-                    filterByFormula: `AND({Client Internal Code} = '${img.codigo}', {INPUT IMAGE} != '')`,
-                    maxRecords: 1,
-                })
-                .firstPage();
-            */
-                
+
             const encodedUrl = img.imagensReferencia ? encodeURI(img.imagensReferencia) : '';
-            
+
             // Função para validar campos de single select - só inclui se tiver valor válido
             const getSelectValue = (value) => {
                 if (!value) return null;
@@ -148,20 +293,29 @@ export async function upsetImagesInAirtable(
                 const cleanValue = value.toString().replace(/^"+|"+$/g, '').trim();
                 return cleanValue !== '' ? cleanValue : null;
             };
-            
+
             const fields = {
-                Invoices: [invoiceId],
                 Clients: [clientId],
                 ["Property's URL"]: img.propertyUrl || '',
                 ["INPUT IMAGE"]: img.imgUrl ? [{ url: img.imgUrl }] : [],
                 ["Owner Email"]: email,
-                Users: [userId],
                 ["Client Internal Code"]: img.codigo || '',
                 Message: img.observacoes || '',     // Long text
-                ["ADDITIONAL ATTACHMENTS"]: encodedUrl ? [{ url: encodedUrl }] : [],
+                //["ADDITIONAL ATTACHMENTS"]: encodedUrl ? [{ url: encodedUrl }] : [],
             };
 
+            if (tableName === "Images") {
+                fields.Invoices = [invoiceId];
+                fields.Users = [userId];
+            }
+
             // Adiciona campos de select apenas se tiverem valores válidos
+
+
+            if (encodedUrl) {
+                fields["ADDITIONAL ATTACHMENTS"] = [{ url: encodedUrl }]
+            }
+
             const decluttering = getSelectValue(img.retirar);
             if (decluttering) {
                 fields["Decluttering"] = decluttering;
@@ -189,12 +343,69 @@ export async function upsetImagesInAirtable(
 
             const estilo = getSelectValue(img.estilo);
             if (estilo) {
-                fields["Estilo"] = estilo;
+                try {
+                    // Buscar o record ID na tabela de estilos
+                    const styleRecords = await baseInstance("Styles").select({
+                        filterByFormula: `{Style Name} = '${estilo}'`, // Assumindo que o campo se chama "Name"
+                        maxRecords: 1
+                    }).firstPage();
+
+                    if (styleRecords.length > 0) {
+                        fields["STYLE"] = [styleRecords[0].id]; // Passar como array com o Record ID
+                    }
+                } catch (styleError) {
+                    console.error(`Erro ao buscar estilo '${estilo}':`, styleError.message);
+                }
             }
 
             const imageWorkflow = getSelectValue(img.imgWorkflow);
             if (imageWorkflow) {
-                fields["Image Workflow"] = imageWorkflow;
+                const workflowFieldName = tableName === "Image suggestions" ? "Image_workflow" : "Image Workflow";
+
+                // Mapear valores específicos para a tabela "Image suggestions"
+                let workflowValue = imageWorkflow;
+                if (tableName === "Image suggestions") {
+                    if (imageWorkflow === "Atelier") {
+                        workflowValue = "Boutique workflow";
+                    } else if (imageWorkflow === "SmartStage") {
+                        workflowValue = "Imob workflow";
+                    }
+                }
+
+                fields[workflowFieldName] = workflowValue;
+            }
+
+            const suggestionstatus = getSelectValue(img.suggestionstatus);
+            if (suggestionstatus) {
+                fields["Suggestion Status"] = suggestionstatus;
+            }
+
+            let destaques = img.destaques;
+            if (Array.isArray(destaques) && destaques.length > 0) {
+                // Remove valores vazios e normaliza para string
+                fields["Destaques"] = destaques.filter(d => typeof d === "string" && d.trim() !== "");
+            } else if (typeof destaques === "string" && destaques.trim() !== "") {
+                fields["Destaques"] = [destaques.trim()];
+            }
+
+            const endereco = getSelectValue(img.endereco);
+            if (endereco) {
+                fields["Endereço"] = endereco;
+            }
+
+            const preco = getSelectValue(img.preco);
+            if (preco) {
+                // Converte para número, removendo possíveis caracteres não numéricos (exceto ponto e vírgula)
+                const precoNumber = Number(
+                    preco
+                        .toString()
+                        .replace(/\./g, '') // remove pontos de milhar
+                        .replace(',', '.')  // troca vírgula decimal por ponto
+                        .replace(/[^\d.-]/g, '') // remove outros caracteres
+                );
+                if (!isNaN(precoNumber)) {
+                    fields["Preço"] = precoNumber;
+                }
             }
 
             console.log(`Fields being sent for image ${i + 1}:`, JSON.stringify(fields, null, 2));
@@ -217,15 +428,15 @@ export async function upsetImagesInAirtable(
             // Continua processando as outras imagens mesmo se uma falhar
         }
     }
-    
+
     console.log(`Processing complete. Results:`, results);
     return results;
 }
 
 export async function syncImoveisWithAirtable(imoveisFromXml) {
-    const tableName = "ConceitoCarioca";
+    const tableName = "ACasa7";
     const baseInstance = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(process.env.AIRTABLE_BASE_ID);
-    const client = "Conceito Carioca";
+    const client = "Acasa7 Inteligência Imobiliária";
 
     // Busca todos os imóveis atuais do Airtable
     const airtableRecords = await baseInstance(tableName).select({}).all();
