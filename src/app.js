@@ -13,10 +13,62 @@ import sendShotStackRoute from "./routes/sendShotStack.js";
 import sendRunwayRoute from "./routes/sendRunway.js";
 import sendElevenLabsRoute from "./routes/sendElevenLabs.js";
 import sendVirtualStagingRoute from "./routes/sendVirtualStaging.js";
+import gaiaWebhookRoute from "./routes/gaiaWebhook.js";
 
 const app = express();
 app.use(cors());
-app.use(express.json());
+
+// Middleware para logging de requisições
+app.use((req, res, next) => {
+    console.log(`${new Date().toISOString()} - ${req.method} ${req.url}`);
+    console.log('Headers:', JSON.stringify(req.headers, null, 2));
+    next();
+});
+
+// Middleware customizado para parsing JSON com melhor tratamento de erro
+app.use('/api', express.json({
+    limit: '50mb',
+    verify: (req, res, buf, encoding) => {
+        try {
+            // Tenta fazer um parse preliminar para verificar se é JSON válido
+            if (buf && buf.length > 0) {
+                const bodyStr = buf.toString(encoding || 'utf8');
+                console.log(`Raw body preview (first 200 chars): ${bodyStr.substring(0, 200)}`);
+                
+                // Só tenta fazer parse se parecer ser JSON
+                if (bodyStr.trim().startsWith('{') || bodyStr.trim().startsWith('[')) {
+                    JSON.parse(bodyStr);
+                } else if (bodyStr.trim().startsWith('<')) {
+                    // Se for XML, rejeitar com erro específico
+                    throw new Error('XML content received on JSON endpoint. Use Content-Type: application/xml or text/xml');
+                }
+            }
+        } catch (error) {
+            console.error('JSON Parse Error Details:');
+            console.error('Error message:', error.message);
+            console.error('Error position:', error.message.match(/position (\d+)/)?.[1]);
+            
+            if (buf && buf.length > 0) {
+                const bodyStr = buf.toString(encoding || 'utf8');
+                const position = parseInt(error.message.match(/position (\d+)/)?.[1] || '0');
+                const start = Math.max(0, position - 50);
+                const end = Math.min(bodyStr.length, position + 50);
+                
+                console.error('Problematic section:', bodyStr.substring(start, end));
+                console.error('Character at error position:', bodyStr.charAt(position));
+                console.error('Full body length:', bodyStr.length);
+            }
+            
+            // Re-throw o erro para que o Express possa lidar com ele
+            throw error;
+        }
+    }
+}));
+
+// Middleware para webhooks e outros endpoints não-API (pode receber diferentes tipos de conteúdo)
+app.use(express.json({
+    limit: '50mb'
+}));
 
 // Rotas
 app.use("/api", chatgptRoute);
@@ -27,6 +79,7 @@ app.use("/api", sendRunwayRoute);
 app.use("/api", sendShotStackRoute);
 app.use("/api", sendElevenLabsRoute);
 app.use("/api", sendVirtualStagingRoute);
+app.use("/api", gaiaWebhookRoute);
 
 // Endpoint /webhook
 app.post("/webhook", async (req, res) => {
@@ -59,6 +112,37 @@ app.post("/webhook", async (req, res) => {
         console.error("Error in /webhook:", error);
         res.status(500).json({ success: false, message: "Internal Server Error" });
     }
+});
+
+// Middleware de tratamento de erro global
+app.use((error, req, res, next) => {
+    console.error('=== GLOBAL ERROR HANDLER ===');
+    console.error('Error type:', error.constructor.name);
+    console.error('Error message:', error.message);
+    console.error('Request URL:', req.url);
+    console.error('Request Method:', req.method);
+    console.error('Request Headers:', req.headers);
+    
+    // Erro específico de JSON parsing
+    if (error instanceof SyntaxError && error.message.includes('JSON')) {
+        console.error('=== JSON PARSING ERROR ===');
+        console.error('This is likely a malformed JSON in the request body');
+        
+        return res.status(400).json({
+            success: false,
+            error: 'Invalid JSON format',
+            message: 'The request body contains malformed JSON',
+            details: error.message
+        });
+    }
+    
+    // Outros erros
+    console.error('Stack trace:', error.stack);
+    res.status(500).json({
+        success: false,
+        error: 'Internal Server Error',
+        message: error.message
+    });
 });
 
 const PORT = process.env.PORT || 8080;

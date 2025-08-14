@@ -103,340 +103,424 @@ export async function upsetImovelInAirtable(imovel) {
     }
 }
 
+/**
+ * Atualiza o status de sugestões na tabela Image suggestions
+ * @param {Array} suggestionIds - Array com IDs das sugestões a serem atualizadas
+ * @param {string} status - Novo status a ser aplicado (ex: "Approved", "Rejected", etc.)
+ * @returns {Promise<Object>} Resultado da operação com contadores de sucesso/erro
+ */
+export async function updateImageSuggestionsFields(suggestionIds, status = "Approved") {
+    console.log(`🔄 Iniciando atualização de status para ${suggestionIds?.length || 0} sugestões`);
+    
+    if (!suggestionIds || !Array.isArray(suggestionIds) || suggestionIds.length === 0) {
+        console.log("⚠️ Nenhuma sugestão para atualizar");
+        return { updated: 0, errors: 0, details: [] };
+    }
+    
+    const baseInstance = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(process.env.AIRTABLE_BASE_ID);
+    const results = { updated: 0, errors: 0, details: [] };
+    
+    console.log(`📝 Atualizando ${suggestionIds.length} sugestões para status '${status}'`);
+    
+    for (const suggestionId of suggestionIds) {
+        try {
+            await baseInstance("Image suggestions").update(suggestionId, {
+                "Suggestion Status": status
+            });
+            
+            results.updated++;
+            results.details.push({ id: suggestionId, status: 'success', message: `Status atualizado para ${status}` });
+            console.log(`✅ Sugestão ${suggestionId} marcada como ${status}`);
+            
+        } catch (error) {
+            results.errors++;
+            results.details.push({ id: suggestionId, status: 'error', message: error.message });
+            console.error(`❌ Erro ao atualizar sugestão ${suggestionId}:`, error.message);
+        }
+    }
+    
+    console.log(`🎯 Atualização concluída: ${results.updated} sucessos, ${results.errors} erros`);
+    return results;
+}
+
+
+
 export async function upsetImagesInAirtable(
     imagesArray,
     customEmail,
     customClientId,
     customInvoiceId,
     customUserId,
-    imageTable
+    imageTable,
+    originalSuggestionIds = [],
+    requestSource = null,
+    processMode = null
 ) {
+    
     const tableName = imageTable || "Images";
+    
+    // Log de identificação da origem da requisição
+    console.log('🔍 BACKEND - Origem da requisição:', requestSource);
+    console.log('🔍 BACKEND - Modo de processamento:', processMode);
+    console.log('🔍 BACKEND - Tabela destino:', tableName);
+    console.log('🔍 BACKEND - Quantidade de itens no array:', imagesArray.length);
+    
+    // Verificar se é uma requisição do suggestion feed
+    const isSuggestionFeedApproval = requestSource === 'suggestion-feed-approval' || 
+                                    processMode === 'individual-records-only';
+    
+    if (isSuggestionFeedApproval) {
+        console.log('✅ BACKEND - Detectada requisição do Feed de Sugestões - modo individual apenas');
+    }
+
+    // Configuração do Airtable
     const baseInstance = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(process.env.AIRTABLE_BASE_ID);
-
-    // Usar valores personalizados do frontend se fornecidos, ou valores padrão caso contrário
-    const email = customEmail || ""
-    const clientId = customClientId || ""
-    const invoiceId = customInvoiceId || ""
-    const userId = customUserId || ""
-
+    
+    // Valores padrão
+    const email = customEmail || "";
+    const clientId = customClientId || "";
+    const invoiceId = customInvoiceId || "";
+    const userId = customUserId || "";
+    
     const results = [];
-
-    // Função para validar campos de single select - só inclui se tiver valor válido
+    
+    // Função para validar campos de single select
     const getSelectValue = (value) => {
         if (!value) return null;
-        // Remove aspas duplas extras e espaços em branco
         const cleanValue = value.toString().replace(/^"+|"+$/g, '').trim();
         return cleanValue !== '' ? cleanValue : null;
     };
-
-    // Lógica especial para "Image suggestions" - criar apenas um registro com todas as imagens
+    
+    // NOVO: Lógica diferente baseada na tabela de destino
     if (tableName === "Image suggestions") {
-        console.log(`Processing ${imagesArray.length} images as single record for Image suggestions`);
+        console.log('🔍 BACKEND - Modo "Image suggestions": Criando 1 registro com todas as imagens');
         
+        // Para Image suggestions: criar apenas 1 registro com todas as imagens
         try {
-            // Busca registro existente (temporariamente desabilitado para sempre criar novos registros)
-            const records = [];
-
-            // Coletar todas as imagens para o campo INPUT IMAGE
-            const allImages = [];
+            // Coletar todas as URLs de imagens de todos os itens do array
+            const allImageUrls = [];
             
-            // Verificar se há imgUrls (array) ou imgUrl (string único)
-            if (imagesArray[0].imgUrls && Array.isArray(imagesArray[0].imgUrls)) {
-                // Usar todas as URLs do array imgUrls
-                imagesArray[0].imgUrls.forEach(url => {
-                    if (url) allImages.push({ url: url });
-                });
-            } else {
-                // Fallback para o formato antigo (imgUrl por item)
-                imagesArray
-                    .filter(img => img.imgUrl) // Só inclui imagens com URL válida
-                    .forEach(img => allImages.push({ url: img.imgUrl }));
+            for (const img of imagesArray) {
+                // Extrair URLs das diferentes possíveis fontes
+                if (img.imgUrl) {
+                    allImageUrls.push(img.imgUrl);
+                }
+                if (Array.isArray(img.imgUrls)) {
+                    allImageUrls.push(...img.imgUrls);
+                }
+                if (Array.isArray(img["INPUT IMAGES"])) {
+                    allImageUrls.push(...img["INPUT IMAGES"]);
+                }
             }
-
-            // Usar dados da primeira imagem como base para outros campos
-            const firstImg = imagesArray[0];
-            const encodedUrl = firstImg.imagensReferencia ? encodeURI(firstImg.imagensReferencia) : '';
-
+            
+            // Remover duplicatas
+            const uniqueImageUrls = [...new Set(allImageUrls)];
+            console.log(`🔍 BACKEND - Total de URLs únicas coletadas: ${uniqueImageUrls.length}`, uniqueImageUrls);
+            
+            if (uniqueImageUrls.length === 0) {
+                console.warn('⚠️ BACKEND - Nenhuma URL de imagem válida encontrada');
+                return [{ index: 0, status: 'skipped', error: 'Nenhuma URL de imagem válida', imgUrl: null }];
+            }
+            
+            // Usar o primeiro item como base para os outros campos
+            const baseImg = imagesArray[0];
+            const encodedUrl = baseImg.imagensReferencia ? encodeURI(baseImg.imagensReferencia) : '';
+            
+            // Campos básicos para Image suggestions
             const fields = {
-                Clients: [clientId],
-                ["Property's URL"]: firstImg.propertyUrl || '',
-                ["INPUT IMAGE"]: allImages, // Todas as imagens em um campo
+                ["Property's URL"]: baseImg.propertyUrl || '',
+                ["INPUT IMAGE"]: uniqueImageUrls.map(url => ({ url })), // TODAS as imagens em um só campo
                 ["Owner Email"]: email,
-                ["Client Internal Code"]: firstImg.codigo || '',
-                Message: firstImg.observacoes || '',
+                ["Client Internal Code"]: baseImg.codigo || '',
+                Message: baseImg.observacoes || '',
             };
-
-            // Adicionar outros campos baseados na primeira imagem
+            
+            // Relacionamentos condicionais
+            if (clientId && clientId.trim() !== '') {
+                fields.Clients = [clientId];
+            }
+            
             if (encodedUrl) {
                 fields["ADDITIONAL ATTACHMENTS"] = [{ url: encodedUrl }];
             }
-
-            const imageWorkflow = getSelectValue(firstImg.imgWorkflow);
-            if (imageWorkflow) {
-                let workflowValue = imageWorkflow;
-                if (imageWorkflow === "Atelier") {
-                    workflowValue = "Boutique workflow";
-                } else if (imageWorkflow === "SmartStage") {
-                    workflowValue = "Imob workflow";
-                }
-                fields["Image_workflow"] = workflowValue;
-            }
-
-            const suggestionstatus = getSelectValue(firstImg.suggestionstatus);
-            if (suggestionstatus) {
-                fields["Suggestion Status"] = suggestionstatus;
-            }
-
-            // Adicionar campos específicos que estavam faltando
-            let destaques = firstImg.destaques;
-            if (Array.isArray(destaques) && destaques.length > 0) {
-                // Remove valores vazios e normaliza para string
-                fields["Destaques"] = destaques.filter(d => typeof d === "string" && d.trim() !== "");
-            } else if (typeof destaques === "string" && destaques.trim() !== "") {
-                fields["Destaques"] = [destaques.trim()];
-            }
-
-            const endereco = getSelectValue(firstImg.endereco);
-            if (endereco) {
-                fields["Endereço"] = endereco;
-            }
-
-            const preco = getSelectValue(firstImg.preco);
-            if (preco) {
-                // Converte para número, removendo possíveis caracteres não numéricos (exceto ponto e vírgula)
-                const precoNumber = Number(
-                    preco
-                        .toString()
-                        .replace(/\./g, '') // remove pontos de milhar
-                        .replace(',', '.')  // troca vírgula decimal por ponto
-                        .replace(/[^\d.-]/g, '') // remove outros caracteres
-                );
-                if (!isNaN(precoNumber)) {
-                    fields["Preço"] = precoNumber;
-                }
-            }
-
-            // Adicionar outros campos que podem estar presentes
-            const roomType = getSelectValue(firstImg.tipo);
-            if (roomType) {
-                fields["Room Type"] = roomType;
-            }
-
-            const finish = getSelectValue(firstImg.acabamento);
-            if (finish) {
-                fields["Finish"] = finish;
-            }
-
-            const estilo = getSelectValue(firstImg.estilo);
+            
+            // Campos opcionais do primeiro item
+            const decluttering = getSelectValue(baseImg.retirar);
+            if (decluttering) fields["Decluttering"] = decluttering;
+            
+            const roomType = getSelectValue(baseImg.tipo);
+            if (roomType) fields["Room Type"] = roomType;
+            
+            const finish = getSelectValue(baseImg.acabamento);
+            if (finish) fields["Finish"] = finish;
+            
+            // Estilo (relacionamento)
+            const estilo = getSelectValue(baseImg.estilo);
             if (estilo) {
                 try {
-                    // Buscar o record ID na tabela de estilos
                     const styleRecords = await baseInstance("Styles").select({
                         filterByFormula: `{Style Name} = '${estilo}'`,
                         maxRecords: 1
                     }).firstPage();
-
+                    
                     if (styleRecords.length > 0) {
-                        fields["STYLE"] = [styleRecords[0].id]; // Passar como array com o Record ID
+                        fields["STYLE"] = [styleRecords[0].id];
                     }
                 } catch (styleError) {
-                    console.error(`Erro ao buscar estilo '${estilo}':`, styleError.message);
+                    console.error(`❌ Erro ao buscar estilo '${estilo}':`, styleError.message);
                 }
             }
-
-            console.log(`Fields being sent for Image suggestions (${allImages.length} images):`, JSON.stringify(fields, null, 2));
-
-            // Criar registro único
-            const result = await baseInstance(tableName).create(fields);
-            console.log(`✅ Image suggestions record created successfully with ${allImages.length} images:`, result.id);
-            results.push({ 
-                index: 0, 
-                status: 'created', 
-                id: result.id, 
-                imageCount: allImages.length,
-                imgUrls: imagesArray[0].imgUrls || imagesArray.map(img => img.imgUrl)
-            });
-
-        } catch (error) {
-            console.error(`❌ Error processing Image suggestions record:`, error.message);
-            results.push({ 
-                index: 0, 
-                status: 'error', 
-                error: error.message, 
-                imageCount: imagesArray.length,
-                imgUrls: imagesArray[0].imgUrls || imagesArray.map(img => img.imgUrl)
-            });
-        }
-
-        console.log(`Processing complete for Image suggestions. Results:`, results);
-        return results;
-    }
-
-    // Lógica original para outras tabelas
-    for (let i = 0; i < imagesArray.length; i++) {
-        const img = imagesArray[i];
-
-        try {
-            console.log(`Processing image ${i + 1}/${imagesArray.length}:`, img.imgUrl);
-
-            // Busca registro existente pelo campo 'Client Internal Code' e 'INPUT IMAGE'
-            // Temporariamente desabilitado para sempre criar novos registros
-            const records = [];
-
-            const encodedUrl = img.imagensReferencia ? encodeURI(img.imagensReferencia) : '';
-
-            // Função para validar campos de single select - só inclui se tiver valor válido
-            const getSelectValue = (value) => {
-                if (!value) return null;
-                // Remove aspas duplas extras e espaços em branco
-                const cleanValue = value.toString().replace(/^"+|"+$/g, '').trim();
-                return cleanValue !== '' ? cleanValue : null;
-            };
-
-            const fields = {
-                Clients: [clientId],
-                ["Property's URL"]: img.propertyUrl || '',
-                ["INPUT IMAGE"]: img.imgUrl ? [{ url: img.imgUrl }] : [],
-                ["Owner Email"]: email,
-                ["Client Internal Code"]: img.codigo || '',
-                Message: img.observacoes || '',     // Long text
-                //["ADDITIONAL ATTACHMENTS"]: encodedUrl ? [{ url: encodedUrl }] : [],
-            };
-
-            if (tableName === "Images") {
-                fields.Invoices = [invoiceId];
-                fields.Users = [userId];
-            }
-
-            // Adiciona campos de select apenas se tiverem valores válidos
-
-
-            if (encodedUrl) {
-                fields["ADDITIONAL ATTACHMENTS"] = [{ url: encodedUrl }]
-            }
-
-            const decluttering = getSelectValue(img.retirar);
-            if (decluttering) {
-                fields["Decluttering"] = decluttering;
-            }
-
-            const roomType = getSelectValue(img.tipo);
-            if (roomType) {
-                fields["Room Type"] = roomType;
-            }
-
-            const videoTemplate = getSelectValue(img.modeloVideo);
-            if (videoTemplate) {
-                fields["Video Template"] = videoTemplate;
-            }
-
-            const videoProportion = getSelectValue(img.formatoVideo);
-            if (videoProportion) {
-                fields["Video Proportion"] = videoProportion;
-            }
-
-            const finish = getSelectValue(img.acabamento);
-            if (finish) {
-                fields["Finish"] = finish;
-            }
-
-            const estilo = getSelectValue(img.estilo);
-            if (estilo) {
-                try {
-                    // Buscar o record ID na tabela de estilos
-                    const styleRecords = await baseInstance("Styles").select({
-                        filterByFormula: `{Style Name} = '${estilo}'`, // Assumindo que o campo se chama "Name"
-                        maxRecords: 1
-                    }).firstPage();
-
-                    if (styleRecords.length > 0) {
-                        fields["STYLE"] = [styleRecords[0].id]; // Passar como array com o Record ID
-                    }
-                } catch (styleError) {
-                    console.error(`Erro ao buscar estilo '${estilo}':`, styleError.message);
-                }
-            }
-
-            const imageWorkflow = getSelectValue(img.imgWorkflow);
-            if (imageWorkflow) {
-                const workflowFieldName = tableName === "Image suggestions" ? "Image_workflow" : "Image Workflow";
-
-                // Mapear valores específicos para a tabela "Image suggestions"
-                let workflowValue = imageWorkflow;
-                if (tableName === "Image suggestions") {
-                    if (imageWorkflow === "Atelier") {
-                        workflowValue = "Boutique workflow";
-                    } else if (imageWorkflow === "SmartStage") {
-                        workflowValue = "Imob workflow";
-                    }
-                }
-
-                fields[workflowFieldName] = workflowValue;
-            }
-
-            const suggestionstatus = getSelectValue(img.suggestionstatus);
-            if (suggestionstatus) {
-                fields["Suggestion Status"] = suggestionstatus;
-            }
-
-            let destaques = img.destaques;
+            
+            const suggestionstatus = getSelectValue(baseImg.suggestionstatus);
+            if (suggestionstatus) fields["Suggestion Status"] = suggestionstatus;
+            
+            // Destaques
+            let destaques = baseImg.destaques;
             if (Array.isArray(destaques) && destaques.length > 0) {
-                // Remove valores vazios e normaliza para string
                 fields["Destaques"] = destaques.filter(d => typeof d === "string" && d.trim() !== "");
             } else if (typeof destaques === "string" && destaques.trim() !== "") {
                 fields["Destaques"] = [destaques.trim()];
             }
-
-            const endereco = getSelectValue(img.endereco);
-            if (endereco) {
-                fields["Endereço"] = endereco;
-            }
-
-            const preco = getSelectValue(img.preco);
+            
+            const endereco = getSelectValue(baseImg.endereco);
+            if (endereco) fields["Endereço"] = endereco;
+            
+            const preco = getSelectValue(baseImg.preco);
             if (preco) {
-                // Converte para número, removendo possíveis caracteres não numéricos (exceto ponto e vírgula)
                 const precoNumber = Number(
-                    preco
-                        .toString()
-                        .replace(/\./g, '') // remove pontos de milhar
-                        .replace(',', '.')  // troca vírgula decimal por ponto
-                        .replace(/[^\d.-]/g, '') // remove outros caracteres
+                    preco.toString()
+                        .replace(/\./g, '')
+                        .replace(',', '.')
+                        .replace(/[^\d.-]/g, '')
                 );
                 if (!isNaN(precoNumber)) {
                     fields["Preço"] = precoNumber;
                 }
             }
-
-            console.log(`Fields being sent for image ${i + 1}:`, JSON.stringify(fields, null, 2));
-
-            let result;
-            if (records.length > 0) {
-                // Atualiza registro existente
-                result = await baseInstance(tableName).update(records[0].id, fields);
-                console.log(`✅ Image ${i + 1} updated successfully:`, records[0].id);
-                results.push({ index: i, status: 'updated', id: records[0].id, imgUrl: img.imgUrl });
-            } else {
-                // Cria novo registro
-                result = await baseInstance(tableName).create(fields);
-                console.log(`✅ Image ${i + 1} created successfully:`, result.id);
-                results.push({ index: i, status: 'created', id: result.id, imgUrl: img.imgUrl });
-            }
+            
+            console.log(`🔍 BACKEND - Campos para registro único em Image suggestions:`, JSON.stringify(fields, null, 2));
+            
+            // Criar registro único
+            const result = await baseInstance(tableName).create(fields);
+            console.log(`✅ BACKEND - Registro criado em Image suggestions com ${uniqueImageUrls.length} imagens:`, result.id);
+            
+            return [{ 
+                index: 0, 
+                status: 'created', 
+                id: result.id, 
+                imgUrl: uniqueImageUrls.join(', '),
+                imageCount: uniqueImageUrls.length
+            }];
+            
         } catch (error) {
-            console.error(`❌ Error processing image ${i + 1}:`, error.message);
-            results.push({ index: i, status: 'error', error: error.message, imgUrl: img.imgUrl });
-            // Continua processando as outras imagens mesmo se uma falhar
+            console.error(`❌ BACKEND - Erro ao criar registro em Image suggestions:`, error.message);
+            return [{ index: 0, status: 'error', error: error.message, imgUrl: null }];
+        }
+        
+    } else {
+        // Para outras tabelas (Images): comportamento original - 1 registro por imagem
+        console.log('🔍 BACKEND - Modo "Images": Criando 1 registro por imagem');
+        
+        // Validação específica para suggestion feed
+        if (isSuggestionFeedApproval) {
+            // Verificar se cada item do array tem flag skipAggregatedRecord
+            const hasSkipFlags = imagesArray.every(img => img.skipAggregatedRecord === true);
+            if (hasSkipFlags) {
+                console.log('✅ BACKEND - Todas as imagens têm flag skipAggregatedRecord');
+            } else {
+                console.warn('⚠️ BACKEND - Nem todas as imagens têm flag skipAggregatedRecord');
+            }
+            
+            // Verificar se cada item tem source = 'suggestion-feed-approved'
+            const hasSourceFlags = imagesArray.every(img => img.source === 'suggestion-feed-approved');
+            if (hasSourceFlags) {
+                console.log('✅ BACKEND - Todas as imagens têm source correto');
+            } else {
+                console.warn('⚠️ BACKEND - Nem todas as imagens têm source correto');
+            }
+        }
+        
+        for (let i = 0; i < imagesArray.length; i++) {
+            const img = imagesArray[i];
+            
+            try {
+                // Log específico para cada imagem do suggestion feed
+                if (isSuggestionFeedApproval) {
+                    console.log(`🔍 BACKEND - Processando imagem ${i + 1}/${imagesArray.length} do Feed de Sugestões`);
+                    console.log(`🔍 BACKEND - Source: ${img.source}, Skip Aggregated: ${img.skipAggregatedRecord}`);
+                }
+                
+                // Buscar registros existentes (temporariamente desabilitado para sempre criar novos)
+                const records = [];
+                
+                const encodedUrl = img.imagensReferencia ? encodeURI(img.imagensReferencia) : '';
+                
+                // Usar apenas imgUrl como fonte de verdade para INPUT IMAGE
+                // Ignorar imgUrls e "INPUT IMAGES" para evitar duplicação
+                const imageUrl = img.imgUrl || (Array.isArray(img.imgUrls) ? img.imgUrls[0] : null) || 
+                                (Array.isArray(img["INPUT IMAGES"]) ? img["INPUT IMAGES"][0] : null);
+                
+                if (!imageUrl) {
+                    console.warn(`⚠️ BACKEND - Pulando imagem ${i + 1}: nenhuma URL válida encontrada`);
+                    results.push({ index: i, status: 'skipped', error: 'Nenhuma URL de imagem válida', imgUrl: null });
+                    continue;
+                }
+                
+                // Validação adicional para suggestion feed
+                if (isSuggestionFeedApproval && img.skipAggregatedRecord !== true) {
+                    console.warn(`⚠️ BACKEND - Imagem ${i + 1} sem flag skipAggregatedRecord`);
+                }
+                
+                // Campos básicos
+                const fields = {
+                    ["Property's URL"]: img.propertyUrl || '',
+                    ["INPUT IMAGE"]: [{ url: imageUrl }], // Uma imagem por registro
+                    ["Owner Email"]: email,
+                    ["Client Internal Code"]: img.codigo || '',
+                    Message: img.observacoes || '',
+                };
+                
+                // Adicionar metadados de origem nos campos se for suggestion feed
+                if (isSuggestionFeedApproval) {
+                    fields["Processing Source"] = "suggestion-feed-approval";
+                    fields["Created From"] = "feed-approval";
+                    
+                    // Adicionar timestamp específico
+                    fields["Approved At"] = new Date().toISOString();
+                }
+                
+                // Relacionamentos condicionais
+                if (clientId && clientId.trim() !== '') {
+                    fields.Clients = [clientId];
+                }
+                
+                // Usar a tabela especificada no parâmetro, não forçar "Images"
+                const actualTableName = tableName;
+                
+                // Aplicar campos específicos baseados na tabela de destino
+                if (actualTableName === "Images") {
+                    if (invoiceId && invoiceId.trim() !== '') {
+                        fields.Invoices = [invoiceId];
+                    }
+                    if (userId && userId.trim() !== '') {
+                        fields.Users = [userId];
+                    }
+                }
+                
+                if (encodedUrl) {
+                    fields["ADDITIONAL ATTACHMENTS"] = [{ url: encodedUrl }];
+                }
+                
+                // Campos opcionais
+                const decluttering = getSelectValue(img.retirar);
+                if (decluttering) fields["Decluttering"] = decluttering;
+                
+                const roomType = getSelectValue(img.tipo);
+                if (roomType) fields["Room Type"] = roomType;
+                
+                const videoTemplate = getSelectValue(img.modeloVideo);
+                if (videoTemplate) fields["Video Template"] = videoTemplate;
+                
+                const videoProportion = getSelectValue(img.formatoVideo);
+                if (videoProportion) fields["Video Proportion"] = videoProportion;
+                
+                const finish = getSelectValue(img.acabamento);
+                if (finish) fields["Finish"] = finish;
+                
+                // Estilo (relacionamento)
+                const estilo = getSelectValue(img.estilo);
+                if (estilo) {
+                    try {
+                        const styleRecords = await baseInstance("Styles").select({
+                            filterByFormula: `{Style Name} = '${estilo}'`,
+                            maxRecords: 1
+                        }).firstPage();
+                        
+                        if (styleRecords.length > 0) {
+                            fields["STYLE"] = [styleRecords[0].id];
+                        }
+                    } catch (styleError) {
+                        console.error(`❌ Erro ao buscar estilo '${estilo}':`, styleError.message);
+                    }
+                }
+                
+                const imageWorkflow = getSelectValue(img.imgWorkflow);
+                if (imageWorkflow) fields["Image Workflow"] = imageWorkflow;
+                
+                const suggestionstatus = getSelectValue(img.suggestionstatus);
+                if (suggestionstatus) fields["Suggestion Status"] = suggestionstatus;
+                
+                // Destaques
+                let destaques = img.destaques;
+                if (Array.isArray(destaques) && destaques.length > 0) {
+                    fields["Destaques"] = destaques.filter(d => typeof d === "string" && d.trim() !== "");
+                } else if (typeof destaques === "string" && destaques.trim() !== "") {
+                    fields["Destaques"] = [destaques.trim()];
+                }
+                
+                const endereco = getSelectValue(img.endereco);
+                if (endereco) fields["Endereço"] = endereco;
+                
+                const preco = getSelectValue(img.preco);
+                if (preco) {
+                    const precoNumber = Number(
+                        preco.toString()
+                            .replace(/\./g, '')
+                            .replace(',', '.')
+                            .replace(/[^\d.-]/g, '')
+                    );
+                    if (!isNaN(precoNumber)) {
+                        fields["Preço"] = precoNumber;
+                    }
+                }
+                
+                // Log mais específico
+                if (isSuggestionFeedApproval) {
+                    console.log(`🔍 BACKEND - Campos para imagem ${i + 1} (Feed de Sugestões) - Tabela: ${actualTableName}:`, JSON.stringify(fields, null, 2));
+                } else {
+                    console.log(`🔍 BACKEND - Campos para imagem ${i + 1} - Tabela: ${actualTableName}:`, JSON.stringify(fields, null, 2));
+                }
+                
+                // Criar/atualizar registro
+                let result;
+                if (records.length > 0) {
+                    result = await baseInstance(actualTableName).update(records[0].id, fields);
+                    console.log(`✅ BACKEND - Imagem ${i + 1} atualizada:`, records[0].id);
+                    results.push({ index: i, status: 'updated', id: records[0].id, imgUrl: imageUrl });
+                } else {
+                    result = await baseInstance(actualTableName).create(fields);
+                    if (isSuggestionFeedApproval) {
+                        console.log(`✅ BACKEND - Imagem ${i + 1} criada (Feed de Sugestões):`, result.id);
+                    } else {
+                        console.log(`✅ BACKEND - Imagem ${i + 1} criada:`, result.id);
+                    }
+                    results.push({ index: i, status: 'created', id: result.id, imgUrl: imageUrl });
+                }
+                
+            } catch (error) {
+                console.error(`❌ BACKEND - Erro ao processar imagem ${i + 1}:`, error.message);
+                results.push({ index: i, status: 'error', error: error.message, imgUrl: imageUrl || img.imgUrl });
+            }
+        }
+        
+        // Log final específico para suggestion feed
+        if (isSuggestionFeedApproval) {
+            const successCount = results.filter(r => r.status === 'created' || r.status === 'updated').length;
+            const errorCount = results.filter(r => r.status === 'error').length;
+            
+            console.log(`🎯 BACKEND - Resultado Feed de Sugestões: ${successCount} sucessos, ${errorCount} erros`);
+            console.log('🔍 BACKEND - IMPORTANTE: Se foram criados registros extras além destes, o problema está em outro lugar');
         }
     }
-
-    console.log(`Processing complete. Results:`, results);
+    
     return results;
 }
 
+
 export async function syncImoveisWithAirtable(imoveisFromXml) {
-    const tableName = "ACasa7";
+    const tableName = "Krolow";
     const baseInstance = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(process.env.AIRTABLE_BASE_ID);
-    const client = "Acasa7 Inteligência Imobiliária";
+    const client = "Krolow imóveis";
 
     // Busca todos os imóveis atuais do Airtable
     const airtableRecords = await baseInstance(tableName).select({}).all();
@@ -463,7 +547,7 @@ export async function syncImoveisWithAirtable(imoveisFromXml) {
 
         // Mapear os campos conforme o tipo de XML
         let tipo, finalidade, valor, bairro, cidade, uf, area_util,
-            quartos, suites, banheiros, vagas, descricao, fotos = "";
+            quartos, suites, banheiros, vagas, descricao, fotos = "", url_propriedade = "";
 
         if (isSiga) {
             // Campos específicos do SIGA
@@ -481,6 +565,7 @@ export async function syncImoveisWithAirtable(imoveisFromXml) {
             banheiros = imovel.Details?.Bathrooms || 0;
             vagas = imovel.Details?.Garage || 0;
             descricao = imovel.Title || imovel.Details?.Description || "";
+            url_propriedade = imovel.ListingURL || "";
 
             // Tratar fotos do SIGA (dentro do objeto Media)
             if (isSiga && imovel.Media && imovel.Media.Item) {
@@ -542,6 +627,7 @@ export async function syncImoveisWithAirtable(imoveisFromXml) {
             banheiros = imovel.QtdBanheiros;
             vagas = imovel.QtdVagas;
             descricao = imovel.Observacao || imovel.TituloImovel;
+            url_propriedade = imovel.URLGaiaSite || "";
 
             if (imovel.Fotos && imovel.Fotos.Foto) {
                 if (Array.isArray(imovel.Fotos.Foto)) {
@@ -564,6 +650,7 @@ export async function syncImoveisWithAirtable(imoveisFromXml) {
             banheiros = imovel.banheiros;
             vagas = imovel.vagas;
             descricao = imovel.descricao;
+            url_propriedade = imovel.url_propriedade || "";
 
             if (imovel.fotos?.foto) {
                 fotos = Array.isArray(imovel.fotos.foto)
@@ -607,15 +694,68 @@ export async function syncImoveisWithAirtable(imoveisFromXml) {
             Fotos_URLs: fotos ? fotos : "",
         };
 
+        // Adicionar URL_Propriedade apenas se houver valor
+        if (url_propriedade) {
+            fields.URL_Propriedade = url_propriedade;
+        }
+
         if (!airtableMap[codigo]) {
             // Adicionar novo imóvel
-            await baseInstance(tableName).create(fields);
+            try {
+                await baseInstance(tableName).create(fields);
+            } catch (error) {
+                // Se erro for devido a campo desconhecido, tentar novamente sem campos problemáticos
+                if (error.message && error.message.includes('Unknown field name')) {
+                    console.log(`Erro de campo desconhecido para imóvel ${codigo}: ${error.message}`);
+                    
+                    // Remover URL_Propriedade e tentar novamente
+                    const fieldsWithoutUrl = { ...fields };
+                    delete fieldsWithoutUrl.URL_Propriedade;
+                    
+                    console.log(`Tentando novamente sem campo URL_Propriedade para imóvel ${codigo}...`);
+                    
+                    try {
+                        await baseInstance(tableName).create(fieldsWithoutUrl);
+                        console.log(`Imóvel ${codigo} criado com sucesso (sem URL_Propriedade)`);
+                    } catch (retryError) {
+                        console.error(`Erro ao criar imóvel ${codigo} (retry):`, retryError);
+                        throw retryError;
+                    }
+                } else {
+                    console.error(`Erro ao criar imóvel ${codigo}:`, error);
+                    throw error;
+                }
+            }
         } else {
             // Atualizar apenas se houver diferença
             const currentFields = airtableMap[codigo].fields;
             const hasDiff = Object.keys(fields).some(key => fields[key] != currentFields[key]);
             if (hasDiff) {
-                await baseInstance(tableName).update(airtableMap[codigo].id, fields);
+                try {
+                    await baseInstance(tableName).update(airtableMap[codigo].id, fields);
+                } catch (error) {
+                    // Se erro for devido a campo desconhecido, tentar novamente sem campos problemáticos
+                    if (error.message && error.message.includes('Unknown field name')) {
+                        console.log(`Erro de campo desconhecido para atualização do imóvel ${codigo}: ${error.message}`);
+                        
+                        // Remover URL_Propriedade e tentar novamente
+                        const fieldsWithoutUrl = { ...fields };
+                        delete fieldsWithoutUrl.URL_Propriedade;
+                        
+                        console.log(`Tentando novamente sem campo URL_Propriedade para atualização do imóvel ${codigo}...`);
+                        
+                        try {
+                            await baseInstance(tableName).update(airtableMap[codigo].id, fieldsWithoutUrl);
+                            console.log(`Imóvel ${codigo} atualizado com sucesso (sem URL_Propriedade)`);
+                        } catch (retryError) {
+                            console.error(`Erro ao atualizar imóvel ${codigo} (retry):`, retryError);
+                            throw retryError;
+                        }
+                    } else {
+                        console.error(`Erro ao atualizar imóvel ${codigo}:`, error);
+                        throw error;
+                    }
+                }
             }
         }
     }
