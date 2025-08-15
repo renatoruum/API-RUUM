@@ -24,7 +24,6 @@ function validateFields(imageUrl, roomType) {
 
 // Utility: Log errors consistently
 function logError(message, error) {
-    console.error(message, error?.message || error);
 }
 
 // Main function
@@ -38,7 +37,6 @@ async function processImage(input) {
             throw new Error("'record_id' is missing in the input configuration.");
         }
 
-        console.log("Record ID:", recordId);
 
         // Fetch the record
         const record = await fetchRecord(table, recordId, [FIELD_ATTACHMENT, FIELD_ROOM_TYPE]);
@@ -53,20 +51,16 @@ async function processImage(input) {
         }
 
         const imageUrl = attachments[0].url; // Extract the Expiring Download URL
-        console.log("Generated Expiring Download URL:", imageUrl);
 
         // Update the record with the generated URL
         await table.updateRecordAsync(recordId, {
             [FIELD_IMAGE_URL]: imageUrl
         });
 
-        console.log("URL successfully saved to Airtable.");
 
         // Immediately proceed with the API request using the generated URL
         validateFields(imageUrl, roomType);
 
-        console.log(`Final Image URL: ${imageUrl}`);
-        console.log(`Fetched Room Type: ${roomType}`);
 
         // Prepare API request
         const headers = {
@@ -89,7 +83,6 @@ async function processImage(input) {
 
         if (response.ok) {
             const data = await response.json();
-            console.log("API Response:", data);
         } else {
             const errorText = await response.text();
             throw new Error(`API Request Failed: ${response.status} - ${errorText}`);

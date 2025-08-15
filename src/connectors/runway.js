@@ -39,10 +39,8 @@ export async function generateWithRunway(options) {
 
     } catch (error) {
         if (error instanceof TaskFailedError) {
-            console.error("❌ Erro na geração de imagem Runway:", error.taskDetails);
             throw new Error(`Runway Task Failed: ${JSON.stringify(error.taskDetails)}`);
         } else {
-            console.error("❌ Erro ao chamar API Runway:", error.message);
             throw error;
         }
     }
@@ -84,15 +82,12 @@ export async function imageToVideoWithRunway(options) {
             })
             .waitForTaskOutput();
 
-        console.log('Task complete:', task);
         return task;
 
     } catch (error) {
         if (error instanceof TaskFailedError) {
-            console.error("❌ Erro na geração de vídeo Runway:", error.taskDetails);
             throw new Error(`Runway Task Failed: ${JSON.stringify(error.taskDetails)}`);
         } else {
-            console.error("❌ Erro ao chamar API Runway:", error.message);
             throw error;
         }
     }

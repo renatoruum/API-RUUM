@@ -36,7 +36,6 @@ export async function startRender(timeline, output = {}) {
             output: { ...defaultOutput, ...output }
         };
 
-        console.log("Iniciando renderização ShotStack:", JSON.stringify(renderPayload, null, 2));
 
         const response = await axios.post(SHOTSTACK_RENDER_URL, renderPayload, {
             headers: {
@@ -49,7 +48,6 @@ export async function startRender(timeline, output = {}) {
             throw new Error("Nenhum ID de renderização foi retornado pelo ShotStack");
         }
 
-        console.log("Renderização iniciada com ID:", response.data.response.id);
         
         return {
             success: true,
@@ -59,7 +57,6 @@ export async function startRender(timeline, output = {}) {
         };
 
     } catch (error) {
-        console.error("Erro na renderização ShotStack:", error.message);
         throw error;
     }
 }
@@ -100,7 +97,6 @@ export async function checkRenderStatus(renderId) {
         };
 
     } catch (error) {
-        console.error("Erro ao verificar status:", error.message);
         return {
             success: false,
             message: error.message,
@@ -173,7 +169,6 @@ export async function waitForRenderCompletion(renderId, maxAttempts = 60, interv
             const statusResult = await checkRenderStatus(renderId);
             const status = statusResult.data.status;
             
-            console.log(`Tentativa ${attempts + 1}: Status da renderização ${renderId}: ${status}`);
             
             if (status === "done") {
                 return {
@@ -197,7 +192,6 @@ export async function waitForRenderCompletion(renderId, maxAttempts = 60, interv
         throw new Error(`Timeout: Renderização não foi concluída após ${maxAttempts} tentativas`);
         
     } catch (error) {
-        console.error("Erro ao aguardar renderização:", error.message);
         throw error;
     }
 }
@@ -224,7 +218,6 @@ export async function renderVideo(timeline, output = {}, waitForCompletion = tru
         return completionResult;
         
     } catch (error) {
-        console.error("Erro na renderização completa:", error.message);
         throw error;
     }
 }
@@ -317,9 +310,6 @@ export function validateTimeline(timeline) {
  */
 export async function testShotstackAuth() {
     try {
-        console.log('🔍 Testando autenticação ShotStack...');
-        console.log('🔑 API Key:', SHOTSTACK_API_KEY ? `${SHOTSTACK_API_KEY.substring(0, 10)}...` : 'NÃO DEFINIDA');
-        console.log('🌐 Base URL:', SHOTSTACK_RENDER_URL);
         
         // Teste 1: Verificar se a API key está definida
         if (!SHOTSTACK_API_KEY) {
@@ -347,8 +337,6 @@ export async function testShotstackAuth() {
             }
         });
 
-        console.log('✅ Resposta da API:', response.status, response.statusText);
-        console.log('📊 Dados recebidos:', response.data);
 
         // Status 400 significa que a autenticação passou mas o payload está vazio
         // Isso é o que esperamos para um teste de auth
@@ -374,7 +362,6 @@ export async function testShotstackAuth() {
         };
 
     } catch (error) {
-        console.error('❌ Erro na autenticação ShotStack:', error.message);
         
         let errorType = 'UNKNOWN_ERROR';
         let errorMessage = error.message;
@@ -383,9 +370,6 @@ export async function testShotstackAuth() {
             const status = error.response.status;
             const statusText = error.response.statusText;
             
-            console.error('📊 Status da resposta:', status, statusText);
-            console.error('📋 Headers da resposta:', error.response.headers);
-            console.error('💬 Dados da resposta:', error.response.data);
 
             switch (status) {
                 case 401:
@@ -442,7 +426,6 @@ export async function testShotstackAuth() {
  */
 export async function testShotstackRender() {
     try {
-        console.log('🧪 Testando renderização mínima...');
 
         // Timeline mínima de teste
         const testTimeline = {
@@ -471,11 +454,9 @@ export async function testShotstackRender() {
             fps: 25
         };
 
-        console.log('📋 Timeline de teste:', JSON.stringify(testTimeline, null, 2));
 
         const result = await startRender(testTimeline, testOutput);
         
-        console.log('✅ Renderização de teste iniciada:', result.id);
         
         return {
             success: true,
@@ -484,14 +465,11 @@ export async function testShotstackRender() {
         };
 
     } catch (error) {
-        console.error('❌ Erro na renderização de teste:', error.message);
         
         let errorMessage = 'Falha na renderização de teste';
         
         if (error.response) {
             const status = error.response.status;
-            console.error('📊 Status da resposta:', status, error.response.statusText);
-            console.error('📋 Dados da resposta:', error.response.data);
             
             switch (status) {
                 case 403:
@@ -529,7 +507,6 @@ export async function testShotstackRender() {
  * @returns {Promise<Object>} Resultado completo do diagnóstico
  */
 export async function diagnoseShotstack() {
-    console.log('🔍 === DIAGNÓSTICO COMPLETO SHOTSTACK ===');
     
     const results = {
         timestamp: new Date().toISOString(),
@@ -543,15 +520,12 @@ export async function diagnoseShotstack() {
     };
 
     // Teste 1: Autenticação
-    console.log('\n1️⃣ Testando autenticação...');
     results.tests.authentication = await testShotstackAuth();
 
     // Teste 2: Renderização (só se autenticação passou)
     if (results.tests.authentication.success) {
-        console.log('\n2️⃣ Testando renderização...');
         results.tests.rendering = await testShotstackRender();
     } else {
-        console.log('\n⏭️ Pulando teste de renderização (autenticação falhou)');
         results.tests.rendering = {
             success: false,
             skipped: true,
@@ -561,7 +535,6 @@ export async function diagnoseShotstack() {
 
     // Teste 3: Verificar status de uma renderização existente (se disponível)
     if (results.tests.rendering.success && results.tests.rendering.renderId) {
-        console.log('\n3️⃣ Testando verificação de status...');
         try {
             await new Promise(resolve => setTimeout(resolve, 2000)); // Aguarda 2 segundos
             const statusResult = await checkRenderStatus(results.tests.rendering.renderId);
@@ -580,35 +553,22 @@ export async function diagnoseShotstack() {
     }
 
     // Resumo final
-    console.log('\n📊 === RESUMO DO DIAGNÓSTICO ===');
-    console.log('🔑 Autenticação:', results.tests.authentication.success ? '✅ OK' : '❌ FALHA');
-    console.log('🎬 Renderização:', results.tests.rendering.success ? '✅ OK' : results.tests.rendering.skipped ? '⏭️ PULADO' : '❌ FALHA');
-    console.log('📊 Status:', results.tests.status?.success ? '✅ OK' : results.tests.status ? '❌ FALHA' : '⏭️ PULADO');
 
     if (!results.tests.authentication.success) {
-        console.log('\n⚠️  PROBLEMA IDENTIFICADO:');
-        console.log('   Tipo:', results.tests.authentication.error);
-        console.log('   Mensagem:', results.tests.authentication.message);
         
         // Sugestões de solução
         switch (results.tests.authentication.error) {
             case 'API_KEY_MISSING':
-                console.log('\n💡 SOLUÇÃO: Defina a variável SHOTSTACK_API_KEY no arquivo .env');
                 break;
             case 'UNAUTHORIZED':
-                console.log('\n💡 SOLUÇÃO: Verifique se a API Key está correta no painel do ShotStack');
                 break;
             case 'PAYMENT_REQUIRED':
-                console.log('\n💡 SOLUÇÃO: Verifique créditos e status da conta no painel do ShotStack');
                 break;
             case 'RATE_LIMIT':
-                console.log('\n💡 SOLUÇÃO: Aguarde alguns minutos antes de tentar novamente');
                 break;
         }
     }
 
-    console.log('\n🔗 Painel ShotStack: https://dashboard.shotstack.io/');
-    console.log('📖 Documentação: https://shotstack.io/docs/');
     
     return results;
 }

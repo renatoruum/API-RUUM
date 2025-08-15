@@ -20,8 +20,6 @@ app.use(cors());
 
 // Middleware para logging de requisições
 app.use((req, res, next) => {
-    console.log(`${new Date().toISOString()} - ${req.method} ${req.url}`);
-    console.log('Headers:', JSON.stringify(req.headers, null, 2));
     next();
 });
 
@@ -33,7 +31,6 @@ app.use('/api', express.json({
             // Tenta fazer um parse preliminar para verificar se é JSON válido
             if (buf && buf.length > 0) {
                 const bodyStr = buf.toString(encoding || 'utf8');
-                console.log(`Raw body preview (first 200 chars): ${bodyStr.substring(0, 200)}`);
                 
                 // Só tenta fazer parse se parecer ser JSON
                 if (bodyStr.trim().startsWith('{') || bodyStr.trim().startsWith('[')) {
@@ -44,9 +41,6 @@ app.use('/api', express.json({
                 }
             }
         } catch (error) {
-            console.error('JSON Parse Error Details:');
-            console.error('Error message:', error.message);
-            console.error('Error position:', error.message.match(/position (\d+)/)?.[1]);
             
             if (buf && buf.length > 0) {
                 const bodyStr = buf.toString(encoding || 'utf8');
@@ -54,9 +48,6 @@ app.use('/api', express.json({
                 const start = Math.max(0, position - 50);
                 const end = Math.min(bodyStr.length, position + 50);
                 
-                console.error('Problematic section:', bodyStr.substring(start, end));
-                console.error('Character at error position:', bodyStr.charAt(position));
-                console.error('Full body length:', bodyStr.length);
             }
             
             // Re-throw o erro para que o Express possa lidar com ele
@@ -84,7 +75,6 @@ app.use("/api", gaiaWebhookRoute);
 // Endpoint /webhook
 app.post("/webhook", async (req, res) => {
     try {
-        console.log("Data received:", req.body);
 
         const { image_url, room_type, style } = req.body;
 
@@ -109,24 +99,15 @@ app.post("/webhook", async (req, res) => {
             chatGPTResponse: chatGPTData,
         });
     } catch (error) {
-        console.error("Error in /webhook:", error);
         res.status(500).json({ success: false, message: "Internal Server Error" });
     }
 });
 
 // Middleware de tratamento de erro global
 app.use((error, req, res, next) => {
-    console.error('=== GLOBAL ERROR HANDLER ===');
-    console.error('Error type:', error.constructor.name);
-    console.error('Error message:', error.message);
-    console.error('Request URL:', req.url);
-    console.error('Request Method:', req.method);
-    console.error('Request Headers:', req.headers);
     
     // Erro específico de JSON parsing
     if (error instanceof SyntaxError && error.message.includes('JSON')) {
-        console.error('=== JSON PARSING ERROR ===');
-        console.error('This is likely a malformed JSON in the request body');
         
         return res.status(400).json({
             success: false,
@@ -137,7 +118,6 @@ app.use((error, req, res, next) => {
     }
     
     // Outros erros
-    console.error('Stack trace:', error.stack);
     res.status(500).json({
         success: false,
         error: 'Internal Server Error',

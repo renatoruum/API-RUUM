@@ -14,7 +14,6 @@ router.post("/send-data", async (req, res) => {
     res.json({ success: true, response });
     
   } catch (error) {
-    console.error(error);
     res.status(500).json({ success: false, message: "Internal Server Error" });
   }
 });

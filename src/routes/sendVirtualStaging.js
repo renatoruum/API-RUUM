@@ -14,7 +14,6 @@ const router = express.Router();
 // Rota para testar conexão
 router.get("/virtual-staging/test", async (req, res) => {
   try {
-    console.log("🔍 Testando conexão Virtual Staging AI...");
     
     const result = await testConnection();
     
@@ -25,7 +24,6 @@ router.get("/virtual-staging/test", async (req, res) => {
     });
 
   } catch (error) {
-    console.error("❌ Erro no teste Virtual Staging AI:", error);
     res.status(500).json({
       success: false,
       message: "Erro no teste de conexão",
@@ -37,7 +35,6 @@ router.get("/virtual-staging/test", async (req, res) => {
 // Rota para obter estilos e tipos de ambiente disponíveis
 router.get("/virtual-staging/options", async (req, res) => {
   try {
-    console.log("📋 Buscando opções disponíveis...");
     
     const options = await getAvailableOptions();
     
@@ -52,7 +49,6 @@ router.get("/virtual-staging/options", async (req, res) => {
     });
 
   } catch (error) {
-    console.error("❌ Erro ao buscar opções:", error);
     res.status(500).json({
       success: false,
       message: "Erro ao carregar opções",
@@ -103,7 +99,6 @@ router.post("/virtual-staging/create", async (req, res) => {
       }
     }
 
-    console.log(`🎨 Processando virtual staging: ${style} para ${room_type}`);
 
     const result = await createVirtualStaging({
       image_url,
@@ -131,7 +126,6 @@ router.post("/virtual-staging/create", async (req, res) => {
     res.status(200).json(responseData);
 
   } catch (error) {
-    console.error("❌ Erro no virtual staging:", error);
     res.status(500).json({
       success: false,
       message: "Erro interno do servidor",
@@ -152,7 +146,6 @@ router.get("/virtual-staging/status/:render_id", async (req, res) => {
       });
     }
 
-    console.log(`🔍 Verificando status do render: ${render_id}`);
 
     const result = await getRenderStatus(render_id);
 
@@ -163,7 +156,6 @@ router.get("/virtual-staging/status/:render_id", async (req, res) => {
     });
 
   } catch (error) {
-    console.error("❌ Erro ao verificar status:", error);
     
     if (error.response?.status === 404) {
       return res.status(404).json({
@@ -202,7 +194,6 @@ router.post("/virtual-staging/variation/:render_id", async (req, res) => {
       });
     }
 
-    console.log(`🔄 Criando variação para render: ${render_id}`);
 
     const result = await createVariation(render_id, {
       style,
@@ -224,7 +215,6 @@ router.post("/virtual-staging/variation/:render_id", async (req, res) => {
     res.status(200).json(responseData);
 
   } catch (error) {
-    console.error("❌ Erro ao criar variação:", error);
     
     if (error.response?.status === 404) {
       return res.status(404).json({
@@ -257,7 +247,6 @@ router.post("/virtual-staging/analyze-and-stage", async (req, res) => {
       });
     }
 
-    console.log("🔄 Processando: Análise + Virtual Staging");
 
     // Primeiro, analisar a imagem com ChatGPT para identificar o tipo de ambiente
     const { sendToChatGPT } = await import("../connectors/chatgpt.js");
@@ -277,7 +266,6 @@ router.post("/virtual-staging/analyze-and-stage", async (req, res) => {
       ? detected_room_type 
       : "living";
 
-    console.log(`🎯 Tipo de ambiente detectado: ${final_room_type}`);
 
     // Segundo, criar o virtual staging
     const stagingResult = await createVirtualStaging({
@@ -306,7 +294,6 @@ router.post("/virtual-staging/analyze-and-stage", async (req, res) => {
     res.status(200).json(responseData);
 
   } catch (error) {
-    console.error("❌ Erro no analyze-and-stage:", error);
     res.status(500).json({
       success: false,
       message: "Erro interno do servidor",

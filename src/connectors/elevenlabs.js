@@ -41,14 +41,12 @@ export async function textToSpeech({ text, voice = "RACHEL", model = "eleven_mul
     const timeSinceLastRequest = now - lastRequestTime;
     if (timeSinceLastRequest < MIN_REQUEST_INTERVAL) {
       const waitTime = MIN_REQUEST_INTERVAL - timeSinceLastRequest;
-      console.log(`⏳ Aguardando ${waitTime}ms para próxima requisição...`);
       await new Promise(resolve => setTimeout(resolve, waitTime));
     }
     lastRequestTime = Date.now();
 
     const voiceId = VOICES[voice] || VOICES.RACHEL;
     
-    console.log(`🎤 Convertendo texto para áudio com voz: ${voice}`);
 
     const response = await axios.post(
       `${ELEVENLABS_BASE_URL}/text-to-speech/${voiceId}`,
@@ -78,7 +76,6 @@ export async function textToSpeech({ text, voice = "RACHEL", model = "eleven_mul
       }
     );
 
-    console.log("✅ Áudio gerado com sucesso");
     
     return {
       audioBuffer: response.data,
@@ -87,15 +84,12 @@ export async function textToSpeech({ text, voice = "RACHEL", model = "eleven_mul
     };
 
   } catch (error) {
-    console.error("❌ Erro no Text-to-Speech:", error.response?.data || error.message);
     
     // Log detalhado do erro para diagnóstico
     if (error.response?.data) {
       try {
         const errorData = error.response.data.toString();
-        console.error("🔍 Detalhes do erro ElevenLabs:", errorData);
       } catch (e) {
-        console.error("🔍 Erro ao processar resposta:", error.response.data);
       }
     }
     
@@ -124,7 +118,6 @@ export async function speechToText({ audioBuffer, model = "whisper-1" }) {
       throw new Error("Áudio é obrigatório");
     }
 
-    console.log("🎧 Convertendo áudio para texto...");
 
     // Criar form data
     const form = new FormData();
@@ -145,7 +138,6 @@ export async function speechToText({ audioBuffer, model = "whisper-1" }) {
       }
     );
 
-    console.log("✅ Texto extraído com sucesso");
     
     return {
       text: response.data.text,
@@ -154,7 +146,6 @@ export async function speechToText({ audioBuffer, model = "whisper-1" }) {
     };
 
   } catch (error) {
-    console.error("❌ Erro no Speech-to-Text:", error.response?.data || error.message);
     throw error;
   }
 }
@@ -178,7 +169,6 @@ export async function getAvailableVoices() {
     return response.data.voices;
 
   } catch (error) {
-    console.error("❌ Erro ao listar vozes:", error.response?.data || error.message);
     throw error;
   }
 }

@@ -50,7 +50,6 @@ export async function sendToChatGPT({ image_url, processing_type, ...params }) {
       .resize(1024, 1024, { fit: "inside", withoutEnlargement: true })
       .png({ compressionLevel: 9 })
       .toBuffer();
-    console.log("Tamanho final PNG:", pngBuffer.length / 1024, "KB");
 
     // Processa baseado no tipo de operação
     if (config.type === 'image_edit') {
@@ -62,7 +61,6 @@ export async function sendToChatGPT({ image_url, processing_type, ...params }) {
     }
 
   } catch (error) {
-    console.error("❌ Erro no processamento ChatGPT:", error.response?.data || error.message);
     throw error;
   }
 }
@@ -113,7 +111,6 @@ async function processImageEdit(pngBuffer, config, params, openaiKey) {
     timeout: 120000,
   });
 
-  console.log("✅ Resposta completa da OpenAI (Image Edit):", JSON.stringify(result.data, null, 2));
 
   if (!result.data || !result.data.data || !result.data.data[0]?.url) {
     throw new Error("❌ Resposta inesperada da OpenAI: não encontrou URL da imagem.");
@@ -164,7 +161,6 @@ async function processImageAnalysis(pngBuffer, config, params, openaiKey) {
     timeout: 120000,
   });
 
-  console.log("✅ Resposta completa da OpenAI (Analysis):", JSON.stringify(result.data, null, 2));
 
   if (!result.data || !result.data.choices || !result.data.choices[0]?.message?.content) {
     throw new Error("❌ Resposta inesperada da OpenAI: não encontrou conteúdo da análise.");

@@ -23,15 +23,12 @@ router.post("/start-xmlwatcher", async (req, res) => {
     const response = await fetch(xmlUrl);
     if (!response.ok) throw new Error("Failed to fetch XML");
     const xmlString = await response.text();
-    console.log("XML início:", xmlString.slice(0, 6000));
     const imoveis = await parseImoveisXml(xmlString);
     
     // Correção: passar o array inteiro em vez de cada imóvel individualmente
     await syncImoveisWithAirtable(imoveis);
     
-    console.log(`[Observer] Importação concluída: ${imoveis.length} imóveis`);
   } catch (error) {
-    console.error("[Observer] Erro ao importar XML:", error.message);
   }
 };
 

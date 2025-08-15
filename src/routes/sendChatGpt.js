@@ -61,7 +61,6 @@ router.post("/chatgpt", async (req, res) => {
       data: chatGPTResponse,
     });
   } catch (error) {
-    console.error("Error in ChatGPT route:", error);
     res.status(500).json({
       success: false,
       message: "Erro interno do servidor",

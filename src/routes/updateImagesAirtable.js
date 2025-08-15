@@ -1,11 +1,10 @@
 import express from "express";
-import { upsetImagesInAirtable, updateImageSuggestionsFields } from "../connectors/airtable.js";
+import { upsetImagesInAirtable, updateImageSuggestionsFields, transferApprovedSuggestionToImages } from "../connectors/airtable.js";
 
 const router = express.Router();
 
 router.post("/update-images-airtable", async (req, res) => {
   try {
-    console.log("🔍 DEBUG API - Body recebido:", JSON.stringify(req.body, null, 2));
     
     // Verifica se recebemos um objeto com imagesArray ou diretamente um array
     const imagesArray = req.body.imagesArray || req.body;
@@ -13,38 +12,16 @@ router.post("/update-images-airtable", async (req, res) => {
     // Passa os parâmetros adicionais para a função
     const { email, clientId, invoiceId, userId, table, originalSuggestionIds, processMode, source   } = req.body;
     
-    console.log("🔍 DEBUG API - Parâmetros extraídos:");
-    console.log("- imagesArray length:", imagesArray?.length);
-    console.log("- email:", email);
-    console.log("- clientId:", clientId);
-    console.log("- invoiceId:", invoiceId);
-    console.log("- userId:", userId);
-    console.log("- table:", table);
-    console.log("- originalSuggestionIds:", originalSuggestionIds);
-    
     if (!Array.isArray(imagesArray) || imagesArray.length === 0) {
       return res.status(400).json({ success: false, message: "Body must be a non-empty array of images" });
     }
 
-    console.log(`🔍 DEBUG API - Chamando upsetImagesInAirtable com parâmetros:`);
-    console.log(`- Parâmetro 1 (imagesArray): ${imagesArray.length} items`);
-    console.log(`- Parâmetro 2 (email): "${email}"`);
-    console.log(`- Parâmetro 3 (clientId): "${clientId}"`);
-    console.log(`- Parâmetro 4 (invoiceId): "${invoiceId}"`);
-    console.log(`- Parâmetro 5 (userId): "${userId}"`);
-    console.log(`- Parâmetro 6 (table): "${table}" ← CRÍTICO: Este deve determinar a tabela`);
-    console.log(`- Parâmetro 7 (originalSuggestionIds): ${originalSuggestionIds?.length || 0} items`);
-    
-    console.log(`Starting to process ${imagesArray.length} images`);
     const results = await upsetImagesInAirtable(imagesArray, email, clientId, invoiceId, userId, table, [], processMode, source);
     
     // Conta sucessos e erros
     const successCount = results.filter(r => r.status === 'created' || r.status === 'updated').length;
     const errorCount = results.filter(r => r.status === 'error').length;
-    
-    console.log(`🔍 DEBUG API - Processing complete: ${successCount} successful, ${errorCount} errors`);
-    console.log(`🔍 DEBUG API - Results:`, JSON.stringify(results, null, 2));
-    
+
     res.json({ 
       success: true, 
       message: `${successCount} images processed successfully, ${errorCount} errors`,
@@ -56,7 +33,6 @@ router.post("/update-images-airtable", async (req, res) => {
       }
     });
   } catch (error) {
-    console.error("🔍 DEBUG API - Error updating images in Airtable:", error);
     res.status(500).json({ success: false, message: "Internal Server Error", error: error.message });
   }
 });
@@ -64,11 +40,9 @@ router.post("/update-images-airtable", async (req, res) => {
 // Nova rota para atualizar status de sugestões
 router.post("/update-suggestion-fields", async (req, res) => {
   try {
-    console.log("📝 Received request to update suggestions status");
     
     const { suggestionIds, status } = req.body;
     
-    console.log(`📊 Parameters: ${suggestionIds?.length || 0} suggestion IDs, status: "${status || 'Approved'}"`);
     
     // Validação básica
     if (!suggestionIds || !Array.isArray(suggestionIds)) {
@@ -85,20 +59,14 @@ router.post("/update-suggestion-fields", async (req, res) => {
       });
     }
     
-    console.log(`🚀 Updating status for ${suggestionIds.length} suggestions...`);
-    
     // Chamar a função
     const result = await updateImageSuggestionsFields(suggestionIds, status);
     
-    // Log dos resultados
-    console.log(`✅ Update complete: ${result.updated} successful, ${result.errors} errors`);
     
     // Logs detalhados se houver erros
     if (result.errors > 0) {
-      console.log("❌ Errors details:");
       result.details
         .filter(d => d.status === 'error')
-        .forEach(error => console.log(`  - ${error.id}: ${error.message}`));
     }
     
     // Resposta de sucesso
@@ -114,7 +82,77 @@ router.post("/update-suggestion-fields", async (req, res) => {
     });
     
   } catch (error) {
-    console.error("❌ Error updating suggestions status:", error.message);
+    res.status(500).json({ 
+      success: false, 
+      message: "Internal Server Error", 
+      error: error.message 
+    });
+  }
+});
+
+// Rota específica para Rota 3: Transfer approved suggestions to individual images
+router.post("/transfer-approved-suggestion", async (req, res) => {
+  try {
+    
+    // Extrair dados do request
+    const { 
+      suggestionData, 
+      customEmail, 
+      customClientId, 
+      customInvoiceId, 
+      customUserId 
+    } = req.body;
+    
+    // Validação básica
+    if (!suggestionData) {
+      return res.status(400).json({
+        success: false,
+        message: "suggestionData é obrigatório"
+      });
+    }
+
+    if (!suggestionData.inputImages || !Array.isArray(suggestionData.inputImages) || suggestionData.inputImages.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "suggestionData.inputImages deve ser um array não vazio"
+      });
+    }
+
+
+    // Chamar a função específica para Rota 3
+    const result = await transferApprovedSuggestionToImages(
+      suggestionData, 
+      customEmail, 
+      customClientId, 
+      customInvoiceId, 
+      customUserId
+    );
+
+    if (result.success) {
+      res.status(200).json({
+        success: true,
+        message: `Transfer aprovado: ${result.created} registros criados`,
+        data: {
+          created: result.created,
+          errors: result.errors,
+          total: suggestionData.inputImages.length,
+          details: result.details
+        }
+      });
+    } else {
+      res.status(500).json({
+        success: false,
+        message: result.message,
+        data: {
+          created: result.created || 0,
+          errors: result.errors || [],
+          total: suggestionData.inputImages.length,
+          details: result.details || []
+        }
+      });
+    }
+    
+  } catch (error) {
     res.status(500).json({ 
       success: false, 
       message: "Internal Server Error", 

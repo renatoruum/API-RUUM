@@ -39,7 +39,6 @@ router.post("/elevenlabs/text-to-speech", async (req, res) => {
       });
     }
 
-    console.log(`🎤 Processando TTS: ${text.substring(0, 50)}...`);
 
     const result = await textToSpeech({ text, voice, model });
 
@@ -53,7 +52,6 @@ router.post("/elevenlabs/text-to-speech", async (req, res) => {
     res.send(Buffer.from(result.audioBuffer));
 
   } catch (error) {
-    console.error("Error in Text-to-Speech route:", error);
     res.status(500).json({
       success: false,
       message: "Erro interno do servidor",
@@ -74,7 +72,6 @@ router.post("/elevenlabs/speech-to-text", upload.single('audio'), async (req, re
 
     const { model } = req.body;
 
-    console.log(`🎧 Processando STT: ${req.file.originalname}`);
 
     const result = await speechToText({ 
       audioBuffer: req.file.buffer, 
@@ -88,7 +85,6 @@ router.post("/elevenlabs/speech-to-text", upload.single('audio'), async (req, re
     });
 
   } catch (error) {
-    console.error("Error in Speech-to-Text route:", error);
     res.status(500).json({
       success: false,
       message: "Erro interno do servidor",
@@ -100,7 +96,6 @@ router.post("/elevenlabs/speech-to-text", upload.single('audio'), async (req, re
 // Rota para testar conexão com ElevenLabs
 router.get("/elevenlabs/test", async (req, res) => {
   try {
-    console.log("🔍 Testando conexão com ElevenLabs...");
     
     // Verificar se a chave está configurada
     const apiKey = process.env.ELEVENLABS_API_KEY;
@@ -111,7 +106,6 @@ router.get("/elevenlabs/test", async (req, res) => {
       });
     }
     
-    console.log("✅ Chave da API encontrada:", apiKey.substring(0, 10) + "...");
     
     // Testar com um texto simples
     const testResult = await textToSpeech({ 
@@ -129,7 +123,6 @@ router.get("/elevenlabs/test", async (req, res) => {
     });
     
   } catch (error) {
-    console.error("❌ Erro no teste ElevenLabs:", error);
     res.status(500).json({
       success: false,
       message: "Erro no teste de conexão",
@@ -153,7 +146,6 @@ router.get("/elevenlabs/voices", async (req, res) => {
     });
 
   } catch (error) {
-    console.error("Error in voices route:", error);
     res.status(500).json({
       success: false,
       message: "Erro interno do servidor",
@@ -175,7 +167,6 @@ router.post("/elevenlabs/script-to-audio", async (req, res) => {
       });
     }
 
-    console.log("🔄 Processando: Script + Áudio");
 
     // Primeiro, gerar o script usando ChatGPT
     const { sendToChatGPT } = await import("../connectors/chatgpt.js");
@@ -190,7 +181,6 @@ router.post("/elevenlabs/script-to-audio", async (req, res) => {
     }
 
     const scriptText = scriptResult.result;
-    console.log("✅ Script gerado:", scriptText);
 
     // Segundo, converter o script para áudio
     const audioResult = await textToSpeech({ 
@@ -210,7 +200,6 @@ router.post("/elevenlabs/script-to-audio", async (req, res) => {
     res.send(Buffer.from(audioResult.audioBuffer));
 
   } catch (error) {
-    console.error("Error in script-to-audio route:", error);
     res.status(500).json({
       success: false,
       message: "Erro interno do servidor",

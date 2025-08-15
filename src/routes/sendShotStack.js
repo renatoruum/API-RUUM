@@ -39,7 +39,6 @@ const audioUpload = multer({
         fileSize: 10 * 1024 * 1024, // 10MB máximo
     },
     fileFilter: (req, file, cb) => {
-        console.log(`🔍 Verificando arquivo: ${file.originalname}, MIME: ${file.mimetype}`);
         
         // Verificar se é um arquivo de áudio
         const allowedMimes = [
@@ -61,10 +60,8 @@ const audioUpload = multer({
         const allowedExtensions = ['.mp3', '.wav', '.ogg', '.aac', '.webm', '.m4a', '.aiff'];
         
         if (allowedMimes.includes(file.mimetype) || allowedExtensions.includes(ext)) {
-            console.log(`✅ Arquivo aceito: ${file.originalname}`);
             cb(null, true);
         } else {
-            console.log(`❌ Arquivo rejeitado: ${file.originalname} (MIME: ${file.mimetype}, EXT: ${ext})`);
             cb(new Error(`Tipo de arquivo não suportado. MIME: ${file.mimetype}, Extensão: ${ext}`));
         }
     }
@@ -85,11 +82,9 @@ const cleanupOldAudioFiles = () => {
             
             if (Date.now() - stats.mtime.getTime() > maxAge) {
                 fs.unlinkSync(filePath);
-                console.log(`🗑️ Arquivo de áudio antigo removido: ${file}`);
             }
         });
     } catch (error) {
-        console.error('Erro ao limpar arquivos antigos:', error);
     }
 };
 
@@ -98,12 +93,10 @@ setInterval(cleanupOldAudioFiles, 60 * 60 * 1000);
 
 // Rota para upload de áudio
 router.post("/audio/upload", (req, res) => {
-    console.log("📤 Recebendo upload de áudio...");
     
     audioUpload.single('audio')(req, res, async (err) => {
         try {
             if (err) {
-                console.error("Erro do multer:", err);
                 return res.status(400).json({
                     success: false,
                     message: "Erro no upload de áudio",
@@ -121,8 +114,6 @@ router.post("/audio/upload", (req, res) => {
             const audioId = path.parse(req.file.filename).name;
             const audioUrl = `${req.protocol}://${req.get('host')}/api/audio/${audioId}`;
 
-            console.log(`✅ Upload de áudio realizado: ${req.file.filename}`);
-            console.log(`🔗 URL pública: ${audioUrl}`);
 
             res.json({
                 success: true,
@@ -135,7 +126,6 @@ router.post("/audio/upload", (req, res) => {
             });
 
         } catch (error) {
-            console.error("Erro no upload de áudio:", error);
             res.status(500).json({
                 success: false,
                 message: "Erro interno no upload de áudio",
@@ -157,9 +147,7 @@ router.get("/audio/test-config", (req, res) => {
         if (!dirExists) {
             try {
                 fs.mkdirSync(uploadDir, { recursive: true });
-                console.log("✅ Diretório uploads/audio criado");
             } catch (mkdirError) {
-                console.error("❌ Erro ao criar diretório:", mkdirError);
                 return res.status(500).json({
                     success: false,
                     message: "Erro ao criar diretório de uploads",
@@ -175,7 +163,6 @@ router.get("/audio/test-config", (req, res) => {
             fs.accessSync(uploadDir, fs.constants.W_OK);
             canWrite = true;
         } catch (accessError) {
-            console.error("❌ Sem permissão de escrita:", accessError);
         }
         
         res.json({
@@ -190,7 +177,6 @@ router.get("/audio/test-config", (req, res) => {
         });
         
     } catch (error) {
-        console.error("Erro no teste de configuração:", error);
         res.status(500).json({
             success: false,
             message: "Erro no teste de configuração",
@@ -263,7 +249,6 @@ router.get("/audio/:id", async (req, res) => {
         stream.pipe(res);
 
     } catch (error) {
-        console.error("Erro ao servir áudio:", error);
         res.status(500).json({
             success: false,
             message: "Erro interno ao servir áudio",
@@ -302,7 +287,6 @@ router.delete("/audio/:id", async (req, res) => {
         // Remover arquivo
         fs.unlinkSync(audioPath);
         
-        console.log(`🗑️ Arquivo de áudio removido: ${audioFile}`);
 
         res.json({
             success: true,
@@ -312,7 +296,6 @@ router.delete("/audio/:id", async (req, res) => {
         });
 
     } catch (error) {
-        console.error("Erro ao deletar áudio:", error);
         res.status(500).json({
             success: false,
             message: "Erro interno ao deletar áudio",
@@ -358,7 +341,6 @@ router.get("/audio", async (req, res) => {
         });
 
     } catch (error) {
-        console.error("Erro ao listar áudios:", error);
         res.status(500).json({
             success: false,
             message: "Erro interno ao listar áudios",
@@ -393,7 +375,6 @@ router.post("/shotstack/render", async (req, res) => {
         res.json(result);
 
     } catch (error) {
-        console.error("Erro na rota /shotstack/render:", error);
         res.status(500).json({
             success: false,
             message: "Erro interno do servidor",
@@ -419,7 +400,6 @@ router.get("/shotstack/status/:id", async (req, res) => {
         res.json(result);
 
     } catch (error) {
-        console.error("Erro na rota /shotstack/status:", error);
         res.status(500).json({
             success: false,
             message: "Erro ao verificar status",
@@ -457,7 +437,6 @@ router.post("/shotstack/render-sync", async (req, res) => {
         res.json(result);
 
     } catch (error) {
-        console.error("Erro na rota /shotstack/render-sync:", error);
         
         if (error.message.includes("Timeout")) {
             return res.status(408).json({
@@ -527,7 +506,6 @@ router.post("/shotstack/slideshow", async (req, res) => {
         res.json(result);
 
     } catch (error) {
-        console.error("Erro na rota /shotstack/slideshow:", error);
         res.status(500).json({
             success: false,
             message: "Erro na criação do slideshow",
@@ -567,7 +545,6 @@ router.post("/shotstack/template/:templateName", async (req, res) => {
         res.json(result);
 
     } catch (error) {
-        console.error("Erro na rota /shotstack/template:", error);
         res.status(500).json({
             success: false,
             message: "Erro na renderização do template",
@@ -647,7 +624,6 @@ router.get("/shotstack/status-stream/:id", async (req, res) => {
         });
 
     } catch (error) {
-        console.error("Erro na rota /shotstack/status-stream:", error);
         res.status(500).json({
             success: false,
             message: "Erro ao iniciar stream de status",
@@ -707,7 +683,6 @@ router.get("/shotstack/poll/:id", async (req, res) => {
         await poll();
 
     } catch (error) {
-        console.error("Erro na rota /shotstack/poll:", error);
         res.status(500).json({
             success: false,
             message: "Erro no polling",
@@ -719,7 +694,6 @@ router.get("/shotstack/poll/:id", async (req, res) => {
 // Rota para diagnóstico da API ShotStack
 router.get("/shotstack/diagnose", async (req, res) => {
     try {
-        console.log("🔍 Iniciando diagnóstico ShotStack via API...");
         
         const results = await diagnoseShotstack();
         
@@ -736,7 +710,6 @@ router.get("/shotstack/diagnose", async (req, res) => {
         });
 
     } catch (error) {
-        console.error("Erro na rota /shotstack/diagnose:", error);
         res.status(500).json({
             success: false,
             message: "Erro ao executar diagnóstico",
@@ -748,7 +721,6 @@ router.get("/shotstack/diagnose", async (req, res) => {
 // Rota para teste rápido de autenticação
 router.get("/shotstack/test-auth", async (req, res) => {
     try {
-        console.log("🔑 Testando autenticação ShotStack...");
         
         const result = await testShotstackAuth();
         
@@ -763,7 +735,6 @@ router.get("/shotstack/test-auth", async (req, res) => {
         });
 
     } catch (error) {
-        console.error("Erro na rota /shotstack/test-auth:", error);
         res.status(500).json({
             success: false,
             message: "Erro ao testar autenticação",
@@ -775,7 +746,6 @@ router.get("/shotstack/test-auth", async (req, res) => {
 // Rota para teste de renderização mínima
 router.post("/shotstack/test-render", async (req, res) => {
     try {
-        console.log("🧪 Testando renderização mínima...");
         
         const result = await testShotstackRender();
         
@@ -790,7 +760,6 @@ router.post("/shotstack/test-render", async (req, res) => {
         });
 
     } catch (error) {
-        console.error("Erro na rota /shotstack/test-render:", error);
         res.status(500).json({
             success: false,
             message: "Erro ao testar renderização",
@@ -811,9 +780,7 @@ router.get("/shotstack/audio-debug", (req, res) => {
         if (!dirExists) {
             try {
                 fs.mkdirSync(uploadDir, { recursive: true });
-                console.log("✅ Diretório uploads/audio criado");
             } catch (mkdirError) {
-                console.error("❌ Erro ao criar diretório:", mkdirError);
                 return res.status(500).json({
                     success: false,
                     message: "Erro ao criar diretório de uploads",
@@ -829,7 +796,6 @@ router.get("/shotstack/audio-debug", (req, res) => {
             fs.accessSync(uploadDir, fs.constants.W_OK);
             canWrite = true;
         } catch (accessError) {
-            console.error("❌ Sem permissão de escrita:", accessError);
         }
         
         res.json({
@@ -846,7 +812,6 @@ router.get("/shotstack/audio-debug", (req, res) => {
         });
         
     } catch (error) {
-        console.error("Erro no teste de configuração:", error);
         res.status(500).json({
             success: false,
             message: "Erro no teste de configuração",

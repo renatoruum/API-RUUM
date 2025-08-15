@@ -27,7 +27,6 @@ router.post("/runway", async (req, res) => {
     });
 
   } catch (error) {
-    console.error("Runway API Error:", error);
     res.status(500).json({
       success: false,
       message: "Error processing request",
@@ -62,7 +61,6 @@ router.post("/runway/image-to-video", async (req, res) => {
     });
 
   } catch (error) {
-    console.error("Runway API Error:", error);
     res.status(500).json({
       success: false,
       message: "Error processing request",

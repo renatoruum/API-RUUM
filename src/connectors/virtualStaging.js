@@ -36,7 +36,6 @@ export async function testConnection() {
       throw new Error("VIRTUAL_STAGING_API_KEY não definida");
     }
 
-    console.log("🏠 Testando conexão com Virtual Staging AI...");
 
     const response = await axios.get(
       `${VIRTUAL_STAGING_BASE_URL}/ping`,
@@ -48,7 +47,6 @@ export async function testConnection() {
       }
     );
 
-    console.log("✅ Conexão com Virtual Staging AI estabelecida");
     
     return {
       success: true,
@@ -56,7 +54,6 @@ export async function testConnection() {
     };
 
   } catch (error) {
-    console.error("❌ Erro na conexão Virtual Staging AI:", error.response?.data || error.message);
     throw error;
   }
 }
@@ -68,7 +65,6 @@ export async function getAvailableOptions() {
       throw new Error("VIRTUAL_STAGING_API_KEY não definida");
     }
 
-    console.log("📋 Buscando opções disponíveis...");
 
     const response = await axios.get(
       `${VIRTUAL_STAGING_BASE_URL}/options`,
@@ -80,12 +76,10 @@ export async function getAvailableOptions() {
       }
     );
 
-    console.log("✅ Opções carregadas com sucesso");
     
     return response.data;
 
   } catch (error) {
-    console.error("❌ Erro ao buscar opções:", error.response?.data || error.message);
     throw error;
   }
 }
@@ -108,7 +102,6 @@ export async function createVirtualStaging({
       throw new Error("URL da imagem é obrigatória");
     }
 
-    console.log(`🎨 Criando virtual staging: ${style} para ${room_type}`);
 
     const requestBody = {
       image_url,
@@ -145,7 +138,6 @@ export async function createVirtualStaging({
       }
     );
 
-    console.log("✅ Virtual staging criado com sucesso");
     
     return {
       success: true,
@@ -153,7 +145,6 @@ export async function createVirtualStaging({
     };
 
   } catch (error) {
-    console.error("❌ Erro no virtual staging:", error.response?.data || error.message);
     
     // Tratamento de erros específicos
     if (error.response?.status === 403) {
@@ -179,7 +170,6 @@ export async function getRenderStatus(render_id) {
       throw new Error("ID do render é obrigatório");
     }
 
-    console.log(`🔍 Verificando status do render: ${render_id}`);
 
     const response = await axios.get(
       `${VIRTUAL_STAGING_BASE_URL}/render`,
@@ -192,7 +182,6 @@ export async function getRenderStatus(render_id) {
       }
     );
 
-    console.log(`📊 Status do render: ${response.data.status}`);
     
     return {
       success: true,
@@ -200,7 +189,6 @@ export async function getRenderStatus(render_id) {
     };
 
   } catch (error) {
-    console.error("❌ Erro ao verificar status:", error.response?.data || error.message);
     throw error;
   }
 }
@@ -216,7 +204,6 @@ export async function createVariation(render_id, { style, wait_for_completion = 
       throw new Error("ID do render é obrigatório");
     }
 
-    console.log(`🔄 Criando variação do render: ${render_id}`);
 
     const requestBody = {
       wait_for_completion
@@ -239,7 +226,6 @@ export async function createVariation(render_id, { style, wait_for_completion = 
       }
     );
 
-    console.log("✅ Variação criada com sucesso");
     
     return {
       success: true,
@@ -247,7 +233,6 @@ export async function createVariation(render_id, { style, wait_for_completion = 
     };
 
   } catch (error) {
-    console.error("❌ Erro ao criar variação:", error.response?.data || error.message);
     throw error;
   }
 }

@@ -10,7 +10,6 @@ router.post("/import-xml", express.text({ type: "application/xml" }), async (req
     await syncImoveisWithAirtable(imoveis);
     res.json({ success: true, count: imoveis.length });
   } catch (error) {
-    console.error(error);
     res.status(400).json({ success: false, message: error.message });
   }
 });
