@@ -530,6 +530,8 @@ export async function upsetImagesInAirtable(
                 const actualTableName = tableName;
                 
                 // Aplicar campos específicos baseados na tabela de destino
+                console.log("actualTableName:", actualTableName);
+                console.log("invoiceId:", invoiceId);
                 if (actualTableName === "Images") {
                     if (invoiceId && invoiceId.trim() !== '') {
                         fields.Invoices = [invoiceId];
@@ -643,7 +645,7 @@ export async function upsetImagesInAirtable(
 export async function syncImoveisWithAirtable(imoveisFromXml) {
     const tableName = "Krolow";
     const baseInstance = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(process.env.AIRTABLE_BASE_ID);
-    const client = "Krolow imóveis";
+    const client = "Krolow imóveis"
 
     // Busca todos os imóveis atuais do Airtable
     const airtableRecords = await baseInstance(tableName).select({}).all();

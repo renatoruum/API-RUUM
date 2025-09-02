@@ -5,6 +5,7 @@ import express from "express";
 import cors from "cors";
 import fetch from "node-fetch"; 
 //Routes
+
 import chatgptRoute from "./routes/sendChatGpt.js";
 import importXmlRoute from "./routes/importXml.js";
 import updateImagesAirtableRoute from "./routes/updateImagesAirtable.js";
@@ -14,6 +15,8 @@ import sendRunwayRoute from "./routes/sendRunway.js";
 import sendElevenLabsRoute from "./routes/sendElevenLabs.js";
 import sendVirtualStagingRoute from "./routes/sendVirtualStaging.js";
 import gaiaWebhookRoute from "./routes/gaiaWebhook.js";
+import firebaseRoutes from "./routes/firebase.js";
+import firebaseStorageRoutes from "./routes/firebaseStorage.js";
 
 const app = express();
 app.use(cors());
@@ -62,6 +65,7 @@ app.use(express.json({
 }));
 
 // Rotas
+
 app.use("/api", chatgptRoute);
 app.use("/api", importXmlRoute);
 app.use("/api", updateImagesAirtableRoute);
@@ -71,6 +75,10 @@ app.use("/api", sendShotStackRoute);
 app.use("/api", sendElevenLabsRoute);
 app.use("/api", sendVirtualStagingRoute);
 app.use("/api", gaiaWebhookRoute);
+app.use("/api", firebaseRoutes);
+
+// Rota de teste para upload de imagem local para o Storage
+app.use("/api", firebaseStorageRoutes);
 
 // Endpoint /webhook
 app.post("/webhook", async (req, res) => {
@@ -125,5 +133,29 @@ app.use((error, req, res, next) => {
     });
 });
 
+// Health check endpoint
+app.get("/health", (req, res) => {
+  res.status(200).json({ 
+    status: "OK", 
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime()
+  });
+});
+
 const PORT = process.env.PORT || 8080;
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+const server = app.listen(PORT, '0.0.0.0', () => {
+  console.log(`Server running on port ${PORT}`);
+  console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
+});
+
+// Graceful shutdown
+const shutdown = () => {
+  console.log('Starting graceful shutdown...');
+  server.close(() => {
+    console.log('Server closed.');
+    process.exit(0);
+  });
+};
+
+process.on('SIGTERM', shutdown);
+process.on('SIGINT', shutdown);

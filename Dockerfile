@@ -1,20 +1,25 @@
-# Use Node.js 18 official image
+# Use Node.js 18 as the base image
 FROM node:18-alpine
 
-# Set working directory
+# Set the working directory
 WORKDIR /app
 
-# Copy package files
+# Copy package.json and package-lock.json (if available)
 COPY package*.json ./
 
 # Install dependencies
 RUN npm install
 
-# Copy source code
-COPY . .
+# Copy the source code and credentials
+COPY src/ ./src/
+COPY credentials/ ./credentials/
 
-# Expose port (dynamic port from Cloud Run)
+# Expose the port the app runs on
 EXPOSE 8080
 
-# Start the application
+# Set environment variables
+ENV NODE_ENV=production
+ENV PORT=8080
+
+# Command to run the application
 CMD ["npm", "start"]
