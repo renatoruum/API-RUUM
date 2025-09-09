@@ -306,18 +306,7 @@ export async function upsetImagesInAirtable(
     processMode = null
 ) {
     
-    console.log("🔍 [upsetImagesInAirtable] Iniciando função com parâmetros:");
-    console.log("  - imagesArray length:", imagesArray?.length || 0);
-    console.log("  - customEmail:", customEmail);
-    console.log("  - customClientId:", customClientId);
-    console.log("  - customInvoiceId:", customInvoiceId);
-    console.log("  - customUserId:", customUserId);
-    console.log("  - imageTable:", imageTable);
-    console.log("  - requestSource:", requestSource);
-    console.log("  - processMode:", processMode);
-    
     const tableName = imageTable || "Images copy";
-    console.log("  - tableName final:", tableName);
     
     // Log de identificação da origem da requisição
     
@@ -341,17 +330,11 @@ export async function upsetImagesInAirtable(
     
     const baseInstance = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(process.env.AIRTABLE_BASE_ID);
     
-    // Valores padrão
-    const email = customEmail || "";
-    const clientId = customClientId || "";
-    const invoiceId = customInvoiceId || "";
-    const userId = customUserId || "";
-    
-    console.log("📧 [upsetImagesInAirtable] Valores processados:");
-    console.log("  - email:", email);
-    console.log("  - clientId:", clientId);
-    console.log("  - invoiceId:", invoiceId);
-    console.log("  - userId:", userId);
+    // Valores processados
+    const email = customEmail || (imagesArray[0]?.userEmail || 'email@default.com');
+    const clientId = customClientId || (imagesArray[0]?.clientId || null);
+    const invoiceId = customInvoiceId || (imagesArray[0]?.invoiceId || null);
+    const userId = customUserId || (imagesArray[0]?.userId || null);
     
     const results = [];
     
