@@ -5,6 +5,13 @@ const router = express.Router();
 
 router.post("/update-images-airtable", async (req, res) => {
   try {
+    console.log("🚀 [ROTA] /update-images-airtable - Iniciando processamento");
+    console.log("📦 [ROTA] Body recebido:", {
+      hasImagesArray: !!req.body.imagesArray,
+      isBodyArray: Array.isArray(req.body),
+      bodyKeys: Object.keys(req.body),
+      bodyLength: Array.isArray(req.body) ? req.body.length : "N/A"
+    });
     
     // Verifica se recebemos um objeto com imagesArray ou diretamente um array
     const imagesArray = req.body.imagesArray || req.body;
@@ -12,15 +19,30 @@ router.post("/update-images-airtable", async (req, res) => {
     // Passa os parâmetros adicionais para a função
     const { email, clientId, invoiceId, userId, table, originalSuggestionIds, processMode, source   } = req.body;
     
+    console.log("📋 [ROTA] Parâmetros extraídos:", {
+      imagesArrayLength: imagesArray?.length || 0,
+      email,
+      clientId,
+      invoiceId,
+      userId,
+      table,
+      processMode,
+      source
+    });
+    
     if (!Array.isArray(imagesArray) || imagesArray.length === 0) {
+      console.log("❌ [ROTA] Array de imagens inválido");
       return res.status(400).json({ success: false, message: "Body must be a non-empty array of images" });
     }
 
+    console.log("🔄 [ROTA] Chamando upsetImagesInAirtable...");
     const results = await upsetImagesInAirtable(imagesArray, email, clientId, invoiceId, userId, table, [], processMode, source);
     
     // Conta sucessos e erros
     const successCount = results.filter(r => r.status === 'created' || r.status === 'updated').length;
     const errorCount = results.filter(r => r.status === 'error').length;
+
+    console.log("✅ [ROTA] Processamento concluído:", { successCount, errorCount, total: results.length });
 
     res.json({ 
       success: true, 
@@ -33,6 +55,8 @@ router.post("/update-images-airtable", async (req, res) => {
       }
     });
   } catch (error) {
+    console.log("❌ [ROTA] Erro interno:", error.message);
+    console.log("🔍 [ROTA] Stack trace:", error.stack);
     res.status(500).json({ success: false, message: "Internal Server Error", error: error.message });
   }
 });

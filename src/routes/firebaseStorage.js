@@ -6,8 +6,20 @@ import { storage } from "../connectors/firebase.js";
 
 const router = express.Router();
 
+// Middleware para verificar se o Firebase está disponível
+const checkFirebaseAvailable = (req, res, next) => {
+  if (!storage) {
+    return res.status(503).json({
+      success: false,
+      error: "Firebase Storage não está disponível",
+      message: "Credenciais do Firebase não configuradas"
+    });
+  }
+  next();
+};
+
 // POST /firebase/upload-local-image
-router.post("/firebase/upload-local-image", async (req, res) => {
+router.post("/firebase/upload-local-image", checkFirebaseAvailable, async (req, res) => {
   try {
     // Caminho absoluto do arquivo local
     const __filename = fileURLToPath(import.meta.url);

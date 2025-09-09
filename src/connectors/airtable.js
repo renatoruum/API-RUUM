@@ -33,9 +33,9 @@ export async function getDataFromAirtable() {
 }
 
 export async function upsetImovelInAirtable(imovel) {
-    const tableName = "Luagge";
+    const tableName = "Tamiles";
     const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(process.env.AIRTABLE_BASE_ID);
-    const client = "Luagge Imóveis";
+    const client = "Tamiles";
 
     const isKenlo = !!imovel.CodigoImovel;
 
@@ -74,22 +74,22 @@ export async function upsetImovelInAirtable(imovel) {
         .firstPage();
 
     const fields = {
-        Client: client,
-        Codigo: codigo,
-        Tipo: tipo,
-        Finalidade: finalidade,
-        Valor: Number(valor),
-        Bairro: bairro,
-        Cidade: cidade,
-        UF: uf,
-        Area_util: Number(area_util),
-        Quartos: Number(quartos),
-        Suites: Number(suites),
-        Banheiros: Number(banheiros),
-        Vagas: Number(vagas),
-        Descricao: descricao,
-        Fotos: fotos ? fotos : "",
-        Fotos_URLs: fotos ? fotos : "",
+        client: client,
+        code: codigo,
+        type: tipo,
+        finally: finalidade,
+        value: Number(valor),
+        neighbordhood: bairro,
+        city: cidade,
+        state: uf,
+        util_area: Number(area_util),
+        rooms: Number(quartos),
+        suits: Number(suites),
+        bathrooms: Number(banheiros),
+        parking_spaces: Number(vagas),
+        description: descricao,
+        photos: fotos ? fotos : "",
+        url_photos: fotos ? fotos : "",
     };
 
     if (records.length > 0) {
@@ -306,12 +306,24 @@ export async function upsetImagesInAirtable(
     processMode = null
 ) {
     
-    const tableName = imageTable || "Images";
+    console.log("🔍 [upsetImagesInAirtable] Iniciando função com parâmetros:");
+    console.log("  - imagesArray length:", imagesArray?.length || 0);
+    console.log("  - customEmail:", customEmail);
+    console.log("  - customClientId:", customClientId);
+    console.log("  - customInvoiceId:", customInvoiceId);
+    console.log("  - customUserId:", customUserId);
+    console.log("  - imageTable:", imageTable);
+    console.log("  - requestSource:", requestSource);
+    console.log("  - processMode:", processMode);
+    
+    const tableName = imageTable || "Images copy";
+    console.log("  - tableName final:", tableName);
     
     // Log de identificação da origem da requisição
     
     // 🚨 ALERTA: Se esta função for chamada durante ROTA 3, há problema no frontend
     if (requestSource === 'suggestion-feed-approval' || processMode === 'individual-records-only') {
+        console.log("⚠️ [upsetImagesInAirtable] Detectado processamento de suggestion feed");
     }
     
     // Verificar se é uma requisição do suggestion feed
@@ -319,9 +331,14 @@ export async function upsetImagesInAirtable(
                                     processMode === 'individual-records-only';
     
     if (isSuggestionFeedApproval) {
+        console.log("🔄 [upsetImagesInAirtable] Modo suggestion feed ativado");
     }
 
     // Configuração do Airtable
+    console.log("🔧 [upsetImagesInAirtable] Configurando Airtable...");
+    console.log("  - AIRTABLE_API_KEY existe:", !!process.env.AIRTABLE_API_KEY);
+    console.log("  - AIRTABLE_BASE_ID:", process.env.AIRTABLE_BASE_ID);
+    
     const baseInstance = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(process.env.AIRTABLE_BASE_ID);
     
     // Valores padrão
@@ -329,6 +346,12 @@ export async function upsetImagesInAirtable(
     const clientId = customClientId || "";
     const invoiceId = customInvoiceId || "";
     const userId = customUserId || "";
+    
+    console.log("📧 [upsetImagesInAirtable] Valores processados:");
+    console.log("  - email:", email);
+    console.log("  - clientId:", clientId);
+    console.log("  - invoiceId:", invoiceId);
+    console.log("  - userId:", userId);
     
     const results = [];
     
@@ -341,13 +364,17 @@ export async function upsetImagesInAirtable(
     
     // NOVO: Lógica diferente baseada na tabela de destino
     if (tableName === "Image suggestions") {
+        console.log("📋 [upsetImagesInAirtable] Processando para tabela 'Image suggestions'");
         
         // Para Image suggestions: criar apenas 1 registro com todas as imagens
         try {
             // Coletar todas as URLs de imagens de todos os itens do array
             const allImageUrls = [];
             
+            console.log("🖼️ [upsetImagesInAirtable] Coletando URLs de imagens...");
             for (const img of imagesArray) {
+                console.log("  - Processando item:", { imgUrl: img.imgUrl, imgUrls: img.imgUrls?.length, inputImages: img["INPUT IMAGES"]?.length });
+                
                 // Extrair URLs das diferentes possíveis fontes
                 if (img.imgUrl) {
                     allImageUrls.push(img.imgUrl);
@@ -362,13 +389,25 @@ export async function upsetImagesInAirtable(
             
             // Remover duplicatas
             const uniqueImageUrls = [...new Set(allImageUrls)];
+            console.log("📊 [upsetImagesInAirtable] URLs coletadas:", {
+                total: allImageUrls.length,
+                unique: uniqueImageUrls.length,
+                urls: uniqueImageUrls.slice(0, 3) // Mostrar apenas as 3 primeiras
+            });
             
             if (uniqueImageUrls.length === 0) {
+                console.log("❌ [upsetImagesInAirtable] Nenhuma URL válida encontrada");
                 return [{ index: 0, status: 'skipped', error: 'Nenhuma URL de imagem válida', imgUrl: null }];
             }
             
             // Usar o primeiro item como base para os outros campos
             const baseImg = imagesArray[0];
+            console.log("🎯 [upsetImagesInAirtable] Usando item base:", {
+                propertyUrl: baseImg.propertyUrl,
+                codigo: baseImg.codigo,
+                observacoes: baseImg.observacoes?.length || 0
+            });
+            
             const encodedUrl = baseImg.imagensReferencia ? encodeURI(baseImg.imagensReferencia) : '';
             
             // Campos básicos para Image suggestions
@@ -380,28 +419,50 @@ export async function upsetImagesInAirtable(
                 Message: baseImg.observacoes || '',
             };
             
+            console.log("🔨 [upsetImagesInAirtable] Campos básicos criados:", {
+                propertyUrl: fields["Property's URL"],
+                imageCount: fields["INPUT IMAGE"].length,
+                email: fields["Owner Email"],
+                code: fields["Client Internal Code"],
+                messageLength: fields.Message?.length || 0
+            });
+            
             // Relacionamentos condicionais
             if (clientId && clientId.trim() !== '') {
                 fields.Clients = [clientId];
+                console.log("🔗 [upsetImagesInAirtable] Adicionado relacionamento Clients:", clientId);
             }
             
             if (encodedUrl) {
                 fields["ADDITIONAL ATTACHMENTS"] = [{ url: encodedUrl }];
+                console.log("📎 [upsetImagesInAirtable] Adicionado attachment:", encodedUrl.substring(0, 50) + "...");
             }
             
             // Campos opcionais do primeiro item
+            console.log("⚙️ [upsetImagesInAirtable] Processando campos opcionais...");
+            
             const decluttering = getSelectValue(baseImg.retirar);
-            if (decluttering) fields["Decluttering"] = decluttering;
+            if (decluttering) {
+                fields["Decluttering"] = decluttering;
+                console.log("  - Decluttering:", decluttering);
+            }
             
             const roomType = getSelectValue(baseImg.tipo);
-            if (roomType) fields["Room Type"] = roomType;
+            if (roomType) {
+                fields["Room Type"] = roomType;
+                console.log("  - Room Type:", roomType);
+            }
             
             const finish = getSelectValue(baseImg.acabamento);
-            if (finish) fields["Finish"] = finish;
+            if (finish) {
+                fields["Finish"] = finish;
+                console.log("  - Finish:", finish);
+            }
             
             // Estilo (relacionamento)
             const estilo = getSelectValue(baseImg.estilo);
             if (estilo) {
+                console.log("🎨 [upsetImagesInAirtable] Processando estilo:", estilo);
                 try {
                     const styleRecords = await baseInstance("Styles").select({
                         filterByFormula: `{Style Name} = '${estilo}'`,
@@ -410,24 +471,37 @@ export async function upsetImagesInAirtable(
                     
                     if (styleRecords.length > 0) {
                         fields["STYLE"] = [styleRecords[0].id];
+                        console.log("  - Estilo encontrado, ID:", styleRecords[0].id);
+                    } else {
+                        console.log("  - Estilo não encontrado na tabela Styles");
                     }
                 } catch (styleError) {
+                    console.log("  - Erro ao buscar estilo:", styleError.message);
                 }
             }
             
             const suggestionstatus = getSelectValue(baseImg.suggestionstatus);
-            if (suggestionstatus) fields["Suggestion Status"] = suggestionstatus;
+            if (suggestionstatus) {
+                fields["Suggestion Status"] = suggestionstatus;
+                console.log("  - Suggestion Status:", suggestionstatus);
+            }
             
             // Destaques
             let destaques = baseImg.destaques;
+            console.log("✨ [upsetImagesInAirtable] Processando destaques:", { type: typeof destaques, value: destaques });
             if (Array.isArray(destaques) && destaques.length > 0) {
                 fields["Destaques"] = destaques.filter(d => typeof d === "string" && d.trim() !== "");
+                console.log("  - Destaques (array):", fields["Destaques"]);
             } else if (typeof destaques === "string" && destaques.trim() !== "") {
                 fields["Destaques"] = [destaques.trim()];
+                console.log("  - Destaques (string):", fields["Destaques"]);
             }
             
             const endereco = getSelectValue(baseImg.endereco);
-            if (endereco) fields["Endereço"] = endereco;
+            if (endereco) {
+                fields["Endereço"] = endereco;
+                console.log("  - Endereço:", endereco);
+            }
             
             const preco = getSelectValue(baseImg.preco);
             if (preco) {
@@ -439,12 +513,17 @@ export async function upsetImagesInAirtable(
                 );
                 if (!isNaN(precoNumber)) {
                     fields["Preço"] = precoNumber;
+                    console.log("  - Preço:", precoNumber);
                 }
             }
             
+            console.log("💾 [upsetImagesInAirtable] Criando registro único na tabela Image suggestions...");
+            console.log("📋 [upsetImagesInAirtable] Campos finais:", Object.keys(fields));
             
             // Criar registro único
             const result = await baseInstance(tableName).create(fields);
+            
+            console.log("✅ [upsetImagesInAirtable] Registro criado com sucesso:", result.id);
             
             return [{ 
                 index: 0, 
@@ -455,61 +534,63 @@ export async function upsetImagesInAirtable(
             }];
             
         } catch (error) {
+            console.log("❌ [upsetImagesInAirtable] Erro ao criar registro em Image suggestions:", error.message);
+            console.log("🔍 [upsetImagesInAirtable] Stack trace:", error.stack);
             return [{ index: 0, status: 'error', error: error.message, imgUrl: null }];
         }
         
     } else {
         // Para outras tabelas (Images): comportamento original - 1 registro por imagem
+        console.log("📋 [upsetImagesInAirtable] Processando para tabela:", tableName);
         
         // Validação específica para suggestion feed
         if (isSuggestionFeedApproval) {
+            console.log("🔍 [upsetImagesInAirtable] Validação suggestion feed...");
             // Verificar se cada item do array tem flag skipAggregatedRecord
             const hasSkipFlags = imagesArray.every(img => img.skipAggregatedRecord === true);
             if (hasSkipFlags) {
+                console.log("  - ✅ Todos itens têm skipAggregatedRecord");
             } else {
+                console.log("  - ⚠️ Nem todos itens têm skipAggregatedRecord");
             }
             
             // Verificar se cada item tem source = 'suggestion-feed-approved'
             const hasSourceFlags = imagesArray.every(img => img.source === 'suggestion-feed-approved');
             if (hasSourceFlags) {
+                console.log("  - ✅ Todos itens têm source correto");
             } else {
+                console.log("  - ⚠️ Nem todos itens têm source correto");
             }
         }
         
         for (let i = 0; i < imagesArray.length; i++) {
             const img = imagesArray[i];
             
+            // Definir imageUrl ANTES do try para estar disponível no catch
+            const imageUrl = img.imgUrl || (Array.isArray(img.imgUrls) ? img.imgUrls[0] : null) || 
+                            (Array.isArray(img["INPUT IMAGES"]) ? img["INPUT IMAGES"][0] : null);
+            
+            // Definir fields ANTES do try para estar disponível no catch
+            let fields = null;
+            
             try {
-                // Log específico para cada imagem do suggestion feed
-                if (isSuggestionFeedApproval) {
-                }
                 
                 // Buscar registros existentes (temporariamente desabilitado para sempre criar novos)
                 const records = [];
                 
                 const encodedUrl = img.imagensReferencia ? encodeURI(img.imagensReferencia) : '';
                 
-                // Usar apenas imgUrl como fonte de verdade para INPUT IMAGE
-                // Ignorar imgUrls e "INPUT IMAGES" para evitar duplicação
-                const imageUrl = img.imgUrl || (Array.isArray(img.imgUrls) ? img.imgUrls[0] : null) || 
-                                (Array.isArray(img["INPUT IMAGES"]) ? img["INPUT IMAGES"][0] : null);
-                
                 if (!imageUrl) {
                     results.push({ index: i, status: 'skipped', error: 'Nenhuma URL de imagem válida', imgUrl: null });
                     continue;
                 }
                 
-                // Validação adicional para suggestion feed
-                if (isSuggestionFeedApproval && img.skipAggregatedRecord !== true) {
-                }
-                
                 // Campos básicos
-                const fields = {
-                    ["Property's URL"]: img.propertyUrl || '',
-                    ["INPUT IMAGE"]: [{ url: imageUrl }], // Uma imagem por registro
-                    ["Owner Email"]: email,
-                    ["Client Internal Code"]: img.codigo || '',
-                    Message: img.observacoes || '',
+                fields = {
+                    property_code: img.codigo || '',
+                    input_img: [{ url: imageUrl }], // Nome correto do campo
+                    user_email: email,
+                    request_text: img.observacoes || '',
                 };
                 
                 // Adicionar metadados de origem nos campos se for suggestion feed
@@ -520,50 +601,73 @@ export async function upsetImagesInAirtable(
                     // Adicionar timestamp específico
                     fields["Approved At"] = new Date().toISOString();
                 }
-                
-                // Relacionamentos condicionais
-                if (clientId && clientId.trim() !== '') {
-                    fields.Clients = [clientId];
-                }
-                
-                // Usar a tabela especificada no parâmetro, não forçar "Images"
+
+                 // Usar a tabela especificada no parâmetro, não forçar "Images"
                 const actualTableName = tableName;
                 
+                // Relacionamentos condicionais - TODOS como arrays para Images copy
+                if (clientId && clientId.trim() !== '') {
+                    fields.client = [clientId]; // Array para relacionamento
+                    console.log("  - 🔗 Campo client adicionado como array:", [clientId]);
+                }
+                
                 // Aplicar campos específicos baseados na tabela de destino
-                console.log("actualTableName:", actualTableName);
-                console.log("invoiceId:", invoiceId);
-                if (actualTableName === "Images") {
-                    if (invoiceId && invoiceId.trim() !== '') {
-                        fields.Invoices = [invoiceId];
-                    }
-                    if (userId && userId.trim() !== '') {
-                        fields.Users = [userId];
-                    }
+                console.log("  - 📋 Tabela destino:", actualTableName);
+                console.log("  - 🎫 invoiceId:", invoiceId);
+                console.log("  - 👤 userId:", userId);
+                
+                // Para tabela Images copy - invoice é string, user é array
+                if (invoiceId && invoiceId.trim() !== '') {
+                    fields.invoice = invoiceId; // String para invoice
+                    console.log("    - 💰 Campo invoice adicionado como string:", invoiceId);
+                }
+                if (userId && userId.trim() !== '') {
+                    fields.user = [userId]; // Array para user (relacionamento)
+                    console.log("    - � Campo user adicionado como array:", [userId]);
                 }
                 
                 if (encodedUrl) {
-                    fields["ADDITIONAL ATTACHMENTS"] = [{ url: encodedUrl }];
+                    fields["style_ref"] = [{ url: encodedUrl }];
+                    console.log("  - 📎 Style ref adicionado");
                 }
                 
                 // Campos opcionais
+                console.log("  - ⚙️ Processando campos opcionais...");
+                
                 const decluttering = getSelectValue(img.retirar);
-                if (decluttering) fields["Decluttering"] = decluttering;
+                if (decluttering) {
+                    fields["decluttering"] = decluttering;
+                    console.log("    - decluttering:", decluttering);
+                }
                 
                 const roomType = getSelectValue(img.tipo);
-                if (roomType) fields["Room Type"] = roomType;
+                if (roomType) {
+                    fields["room_type"] = roomType;
+                    console.log("    - room_type:", roomType);
+                }
                 
                 const videoTemplate = getSelectValue(img.modeloVideo);
-                if (videoTemplate) fields["Video Template"] = videoTemplate;
+                if (videoTemplate) {
+                    fields["vid_type"] = videoTemplate;
+                    console.log("    - vid_type:", videoTemplate);
+                }
                 
                 const videoProportion = getSelectValue(img.formatoVideo);
-                if (videoProportion) fields["Video Proportion"] = videoProportion;
+                if (videoProportion) {
+                    fields["vid_orientation"] = videoProportion;
+                    console.log("    - vid_orientation:", videoProportion);
+                }
                 
                 const finish = getSelectValue(img.acabamento);
-                if (finish) fields["Finish"] = finish;
+                if (finish) {
+                    fields["finishing"] = finish;
+                    console.log("    - finishing:", finish);
+                }
                 
                 // Estilo (relacionamento)
                 const estilo = getSelectValue(img.estilo);
                 if (estilo) {
+                    console.log("  - 🎨 Processando estilo:", estilo);
                     try {
                         const styleRecords = await baseInstance("Styles").select({
                             filterByFormula: `{Style Name} = '${estilo}'`,
@@ -571,28 +675,44 @@ export async function upsetImagesInAirtable(
                         }).firstPage();
                         
                         if (styleRecords.length > 0) {
-                            fields["STYLE"] = [styleRecords[0].id];
+                            fields["style"] = [styleRecords[0].id]; // Array para relacionamento
+                            console.log("    - ✅ Estilo encontrado, ID:", styleRecords[0].id);
+                        } else {
+                            console.log("    - Estilo não encontrado na tabela Styles");
                         }
                     } catch (styleError) {
+                        console.log("    - Erro ao buscar estilo:", styleError.message);
                     }
                 }
                 
                 const imageWorkflow = getSelectValue(img.imgWorkflow);
-                if (imageWorkflow) fields["Image Workflow"] = imageWorkflow;
+                if (imageWorkflow) {
+                    fields["workflow"] = imageWorkflow;
+                    console.log("    - workflow:", imageWorkflow);
+                }
                 
                 const suggestionstatus = getSelectValue(img.suggestionstatus);
-                if (suggestionstatus) fields["Suggestion Status"] = suggestionstatus;
+                if (suggestionstatus) {
+                    fields["Suggestion Status"] = suggestionstatus;
+                    console.log("    - Suggestion Status:", suggestionstatus);
+                }
                 
                 // Destaques
                 let destaques = img.destaques;
+                console.log("  - ✨ Processando destaques:", { type: typeof destaques, value: destaques });
                 if (Array.isArray(destaques) && destaques.length > 0) {
                     fields["Destaques"] = destaques.filter(d => typeof d === "string" && d.trim() !== "");
+                    console.log("    - Destaques (array):", fields["Destaques"]);
                 } else if (typeof destaques === "string" && destaques.trim() !== "") {
                     fields["Destaques"] = [destaques.trim()];
+                    console.log("    - Destaques (string):", fields["Destaques"]);
                 }
                 
                 const endereco = getSelectValue(img.endereco);
-                if (endereco) fields["Endereço"] = endereco;
+                if (endereco) {
+                    fields["Endereço"] = endereco;
+                    console.log("    - Endereço:", endereco);
+                }
                 
                 const preco = getSelectValue(img.preco);
                 if (preco) {
@@ -604,29 +724,160 @@ export async function upsetImagesInAirtable(
                     );
                     if (!isNaN(precoNumber)) {
                         fields["Preço"] = precoNumber;
+                        console.log("    - Preço:", precoNumber);
                     }
                 }
                 
                 // Log mais específico
                 if (isSuggestionFeedApproval) {
+                    console.log("  - 🎯 Processamento suggestion feed - campos finais:", Object.keys(fields).length);
                 } else {
+                    console.log("  - 📝 Processamento normal - campos finais:", Object.keys(fields).length);
+                }
+                
+                // VALIDAÇÃO PREVENTIVA FINAL DOS CAMPOS
+                console.log("  - 🛡️ Validação preventiva dos campos...");
+                const problematicFields = [];
+                
+                for (const [fieldName, fieldValue] of Object.entries(fields)) {
+                    // Verificar campo input_img especificamente
+                    if (fieldName === 'input_img') {
+                        console.log(`    - ${fieldName}: ${Array.isArray(fieldValue) ? 'array' : typeof fieldValue} - ${JSON.stringify(fieldValue)}`);
+                        
+                        if (Array.isArray(fieldValue) && fieldValue.length > 0) {
+                            const attachment = fieldValue[0];
+                            if (attachment && attachment.url) {
+                                console.log(`      - URL attachment: ${attachment.url}`);
+                                
+                                // Verificar se a URL é válida
+                                try {
+                                    new URL(attachment.url);
+                                    console.log(`      - ✅ URL válida`);
+                                } catch (urlError) {
+                                    console.error(`      - ❌ URL inválida: ${urlError.message}`);
+                                    problematicFields.push(`${fieldName} contém URL inválida: ${attachment.url}`);
+                                }
+                            } else {
+                                console.error(`      - ❌ Attachment sem URL válida`);
+                                problematicFields.push(`${fieldName} contém attachment sem URL`);
+                            }
+                        } else {
+                            console.error(`      - ❌ input_img não é um array válido`);
+                            problematicFields.push(`${fieldName} deveria ser array com attachments`);
+                        }
+                    }
+                    
+                    // Verificar campos que são sempre relacionamentos (arrays)
+                    else if (['client', 'user', 'style'].includes(fieldName)) {
+                        const isArray = Array.isArray(fieldValue);
+                        console.log(`    - ${fieldName}: ${isArray ? 'array' : typeof fieldValue} - ${JSON.stringify(fieldValue)}`);
+                        
+                        if (!isArray) {
+                            problematicFields.push(`${fieldName} deveria ser array mas é ${typeof fieldValue}`);
+                        }
+                    }
+                    
+                    // Verificar campos que são sempre strings
+                    else if (['invoice'].includes(fieldName)) {
+                        const isString = typeof fieldValue === 'string';
+                        console.log(`    - ${fieldName}: ${typeof fieldValue} - ${JSON.stringify(fieldValue)}`);
+                        
+                        if (!isString) {
+                            problematicFields.push(`${fieldName} deveria ser string mas é ${typeof fieldValue}`);
+                        }
+                    }
+                }
+                
+                if (problematicFields.length > 0) {
+                    console.error("  - 🚨 CAMPOS PROBLEMÁTICOS DETECTADOS:");
+                    problematicFields.forEach(problem => console.error(`    - ❌ ${problem}`));
                 }
                 
                 // Criar/atualizar registro
                 let result;
+                console.log("  - 💾 Salvando registro...");
+                console.log("  - 📋 Campos que serão enviados:", Object.keys(fields));
+                
+                // Validação de tipos de campos antes de enviar
+                console.log("  - 🔍 Validando tipos de campos...");
+                for (const [fieldName, fieldValue] of Object.entries(fields)) {
+                    const valueType = Array.isArray(fieldValue) ? 'array' : typeof fieldValue;
+                    const arrayLength = Array.isArray(fieldValue) ? fieldValue.length : 'N/A';
+                    const isEmpty = fieldValue === '' || fieldValue === null || fieldValue === undefined || 
+                                   (Array.isArray(fieldValue) && fieldValue.length === 0);
+                    
+                    console.log(`    - ${fieldName}: ${valueType} ${arrayLength !== 'N/A' ? `(${arrayLength} items)` : ''} = ${JSON.stringify(fieldValue)}`);
+                    
+                    if (isEmpty) {
+                        console.log(`      ⚠️  Campo vazio detectado: ${fieldName}`);
+                    }
+                    
+                    // Verificar se é um campo que deveria ser array mas não é
+                    if (['client', 'invoice', 'user'].includes(fieldName) && actualTableName !== "Images copy" && !Array.isArray(fieldValue)) {
+                        console.log(`      ⚠️  ATENÇÃO: Campo ${fieldName} deveria ser array para tabela ${actualTableName}`);
+                    }
+                    
+                    // Verificar se é um campo que deveria ser string mas é array
+                    if (['client', 'invoice', 'user'].includes(fieldName) && actualTableName === "Images copy" && Array.isArray(fieldValue)) {
+                        console.log(`      ⚠️  ATENÇÃO: Campo ${fieldName} deveria ser string para tabela ${actualTableName}`);
+                    }
+                    
+                    // Verificar campos de relacionamento obrigatórios como arrays vazios
+                    if (['style', 'Invoices', 'Users'].includes(fieldName) && Array.isArray(fieldValue) && fieldValue.length === 0) {
+                        console.log(`      ⚠️  Campo relacionamento vazio: ${fieldName}`);
+                    }
+                }
+                
+                console.log("  - 🔍 Campos detalhados:", JSON.stringify(fields, null, 2));
+                
                 if (records.length > 0) {
                     result = await baseInstance(actualTableName).update(records[0].id, fields);
+                    console.log("  - ✅ Registro atualizado:", records[0].id);
                     results.push({ index: i, status: 'updated', id: records[0].id, imgUrl: imageUrl });
                 } else {
                     result = await baseInstance(actualTableName).create(fields);
+                    console.log("  - ✅ Registro criado:", result.id);
                     if (isSuggestionFeedApproval) {
+                        console.log("    - 🎯 Criado via suggestion feed");
                     } else {
+                        console.log("    - 📝 Criado via processo normal");
                     }
                     results.push({ index: i, status: 'created', id: result.id, imgUrl: imageUrl });
                 }
                 
             } catch (error) {
-                results.push({ index: i, status: 'error', error: error.message, imgUrl: imageUrl || img.imgUrl });
+                console.log(`  - ❌ Erro ao processar imagem ${i + 1}:`, error.message);
+                console.error("    - 🔍 Erro completo:", error);
+                console.error("    - 🔍 Erro nome:", error.name);
+                console.error("    - 🔍 Erro detalhes:", error.error);
+                
+                // Verificar se é erro de validação de campo
+                if (error.message.includes('Value is not an array of record IDs')) {
+                    console.error("    - 🚨 ERRO DE VALIDAÇÃO DE CAMPO DETECTADO!");
+                    console.error("    - 🔍 Analisando campos enviados...");
+                    console.error("    - 📊 Fields definido?", fields !== null);
+                    
+                    // Mostrar todos os campos que foram enviados
+                    if (fields !== null) {
+                        console.error("    - 📋 Total de campos:", Object.keys(fields).length);
+                        for (const [fieldName, fieldValue] of Object.entries(fields)) {
+                            const isArray = Array.isArray(fieldValue);
+                            const valueType = isArray ? 'array' : typeof fieldValue;
+                            console.error(`      - ${fieldName}: ${valueType} = ${JSON.stringify(fieldValue)}`);
+                            
+                            // Identificar possíveis culpados
+                            if (isArray && fieldValue.length > 0 && typeof fieldValue[0] === 'string') {
+                                console.error(`        ⚠️  SUSPEITO: ${fieldName} é array de strings - pode ser campo de relationship`);
+                            }
+                        }
+                    } else {
+                        console.error("    - ❌ Fields não está definido - erro aconteceu antes da criação dos campos");
+                    }
+                }
+                
+                console.log("  - 🔍 Stack trace:", error.stack);
+                
+                results.push({ index: i, status: 'error', error: error.message, imgUrl: imageUrl || 'URL_NOT_AVAILABLE' });
             }
         }
         
@@ -635,17 +886,30 @@ export async function upsetImagesInAirtable(
             const successCount = results.filter(r => r.status === 'created' || r.status === 'updated').length;
             const errorCount = results.filter(r => r.status === 'error').length;
             
+            console.log("📊 [upsetImagesInAirtable] Resumo final suggestion feed:");
+            console.log("  - ✅ Sucessos:", successCount);
+            console.log("  - ❌ Erros:", errorCount);
+            console.log("  - 📋 Total processado:", results.length);
+        } else {
+            const successCount = results.filter(r => r.status === 'created' || r.status === 'updated').length;
+            const errorCount = results.filter(r => r.status === 'error').length;
+            
+            console.log("📊 [upsetImagesInAirtable] Resumo final:");
+            console.log("  - ✅ Sucessos:", successCount);
+            console.log("  - ❌ Erros:", errorCount);
+            console.log("  - 📋 Total processado:", results.length);
         }
     }
     
+    console.log("🏁 [upsetImagesInAirtable] Função finalizada, retornando resultados");
     return results;
 }
 
 
 export async function syncImoveisWithAirtable(imoveisFromXml) {
-    const tableName = "Krolow";
+    const tableName = "Tamiles";
     const baseInstance = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(process.env.AIRTABLE_BASE_ID);
-    const client = "Krolow imóveis"
+    const client = "Tamiles"
 
     // Busca todos os imóveis atuais do Airtable
     const airtableRecords = await baseInstance(tableName).select({}).all();
@@ -798,22 +1062,22 @@ export async function syncImoveisWithAirtable(imoveisFromXml) {
         }
 
         const fields = {
-            Client: client,
-            Codigo: codigo,
-            Tipo: tipo,
-            Finalidade: finalidade,
-            Valor: Number(valor),
-            Bairro: bairro,
-            Cidade: cidade,
-            UF: uf,
-            Area_util: Number(area_util),
-            Quartos: Number(quartos),
-            Suites: Number(suites),
-            Banheiros: Number(banheiros),
-            Vagas: Number(vagas),
-            Descricao: descricao,
-            Fotos: fotos ? fotos : "",
-            Fotos_URLs: fotos ? fotos : "",
+            client: client,
+            code: codigo,
+            type: tipo,
+            finally: finalidade,
+            value: Number(valor),
+            neighbordhood: bairro,
+            city: cidade,
+            state: uf,
+            util_area: Number(area_util),
+            rooms: Number(quartos),
+            suits: Number(suites),
+            bathrooms: Number(banheiros),
+            parking_spaces: Number(vagas),
+            description: descricao,
+            photos: fotos ? fotos : "",
+            url_photos: fotos ? fotos : "",
         };
 
         // Adicionar URL_Propriedade apenas se houver valor

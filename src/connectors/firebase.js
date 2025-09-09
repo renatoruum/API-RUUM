@@ -63,6 +63,6 @@ if (serviceAccount && !admin.apps.length) {
   console.log('⚠️  Firebase não será inicializado - credenciais ausentes');
 }
 
-export const db = serviceAccount ? admin.firestore() : null;
-export const storage = serviceAccount ? admin.storage() : null;
+export const db = serviceAccount && admin.apps.length > 0 ? admin.firestore() : null;
+export const storage = serviceAccount && admin.apps.length > 0 ? admin.storage() : null;
 export default admin;

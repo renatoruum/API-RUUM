@@ -3,8 +3,20 @@ import { db } from "../connectors/firebase.js";
 
 const router = express.Router();
 
+// Middleware para verificar se o Firebase está disponível
+const checkFirebaseAvailable = (req, res, next) => {
+  if (!db) {
+    return res.status(503).json({
+      success: false,
+      error: "Firebase Firestore não está disponível",
+      message: "Credenciais do Firebase não configuradas"
+    });
+  }
+  next();
+};
+
 // Rota para adicionar um documento de teste
-router.post("/firebase/test-add", async (req, res) => {
+router.post("/firebase/test-add", checkFirebaseAvailable, async (req, res) => {
   try {
     const { collection, data } = req.body;
     const docRef = await db.collection(collection).add(data);
@@ -15,7 +27,7 @@ router.post("/firebase/test-add", async (req, res) => {
 });
 
 // Rota para buscar documentos de teste
-router.get("/firebase/test-get/:collection", async (req, res) => {
+router.get("/firebase/test-get/:collection", checkFirebaseAvailable, async (req, res) => {
   try {
     const { collection } = req.params;
     const snapshot = await db.collection(collection).get();
