@@ -136,9 +136,9 @@ export async function updateImageSuggestionsFields(suggestionIds, status = "Appr
 }
 
 /**
- * Função específica para transferir sugestões aprovadas do Feed para tabela Images (Rota 3)
+ * Função específica para transferir sugestões aprovadas do Feed para tabela Images copy (Rota 3)
  * Converte 1 registro de Image suggestions (múltiplas imagens) 
- * em N registros individuais na tabela Images
+ * em N registros individuais na tabela Images copy
  * @param {Object} suggestionData - Dados da sugestão aprovada
  * @param {string} customEmail - Email do usuário
  * @param {string} customClientId - ID do cliente
@@ -153,6 +153,7 @@ export async function transferApprovedSuggestionToImages(
     customInvoiceId,
     customUserId
 ) {
+    console.log("🔄 [transferApprovedSuggestionToImages] Iniciando transferência de sugestão aprovada");
     
     const baseInstance = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(process.env.AIRTABLE_BASE_ID);
     const results = [];
@@ -160,7 +161,10 @@ export async function transferApprovedSuggestionToImages(
     // Extrair URLs das imagens - APENAS do campo inputImages
     const imageUrls = suggestionData.inputImages || [];
     
+    console.log("📊 [transferApprovedSuggestionToImages] URLs encontradas:", imageUrls.length);
+    
     if (!Array.isArray(imageUrls) || imageUrls.length === 0) {
+        console.log("❌ [transferApprovedSuggestionToImages] Nenhuma URL válida encontrada");
         return [{ status: 'error', error: 'Nenhuma URL de imagem válida', imgUrl: null }];
     }
     
@@ -176,50 +180,62 @@ export async function transferApprovedSuggestionToImages(
     for (let i = 0; i < imageUrls.length; i++) {
         const imageUrl = imageUrls[i];
         
+        console.log(`🖼️ [transferApprovedSuggestionToImages] Processando imagem ${i + 1}/${imageUrls.length}: ${imageUrl.substring(0, 50)}...`);
+        
         try {
             
             const fields = {
-                ["Property's URL"]: suggestionData.propertyUrl || '',
-                ["INPUT IMAGE"]: [{ url: imageUrl }], // UMA imagem por registro
-                ["Owner Email"]: customEmail || '',
-                ["Client Internal Code"]: suggestionData.codigo || '',
-                ["Message"]: suggestionData.observacoes || '',
+                property_code: suggestionData.codigo || '',
+                input_img: [{ url: imageUrl }], // UMA imagem por registro - nome correto do campo
+                user_email: customEmail || '',
+                request_text: suggestionData.observacoes || '',
             };
             
-            // Relacionamentos
-            if (customClientId) fields.Clients = [customClientId];
-            if (customInvoiceId) fields.Invoices = [customInvoiceId];
-            if (customUserId) fields.Users = [customUserId];
+            console.log("🔗 [transferApprovedSuggestionToImages] Adicionando relacionamentos...");
             
-            // ADDITIONAL ATTACHMENTS se houver imagensReferencia
-            if (suggestionData.imagensReferencia) {
-                const encodedUrl = encodeURI(suggestionData.imagensReferencia);
-                fields["ADDITIONAL ATTACHMENTS"] = [{ url: encodedUrl }];
+            // Relacionamentos - usando nomes corretos dos campos para tabela Images copy
+            if (customClientId) {
+                fields.client = [customClientId]; // Array para relacionamento
+                console.log("  - client:", customClientId);
+            }
+            if (customInvoiceId) {
+                fields.invoice = customInvoiceId; // String para invoice
+                console.log("  - invoice:", customInvoiceId);
+            }
+            if (customUserId) {
+                fields.user = [customUserId]; // Array para relacionamento
+                console.log("  - user:", customUserId);
             }
             
-            // Campos opcionais
+            // Style ref se houver imagensReferencia
+            if (suggestionData.imagensReferencia) {
+                const encodedUrl = encodeURI(suggestionData.imagensReferencia);
+                fields["style_ref"] = [{ url: encodedUrl }];
+            }
+            
+            // Campos opcionais - usando nomes corretos para tabela Images copy
             const decluttering = getSelectValue(suggestionData.retirar);
-            if (decluttering) fields["Decluttering"] = decluttering;
+            if (decluttering) fields["decluttering"] = decluttering;
             
             const roomType = getSelectValue(suggestionData.tipo);
-            if (roomType) fields["Room Type"] = roomType;
+            if (roomType) fields["room_type"] = roomType;
             
             const videoTemplate = getSelectValue(suggestionData.modeloVideo);
-            if (videoTemplate) fields["Video Template"] = videoTemplate;
+            if (videoTemplate) fields["vid_type"] = videoTemplate;
             
             const videoProportion = getSelectValue(suggestionData.formatoVideo);
-            if (videoProportion) fields["Video Proportion"] = videoProportion;
+            if (videoProportion) fields["vid_orientation"] = videoProportion;
             
             const finish = getSelectValue(suggestionData.acabamento);
-            if (finish) fields["Finish"] = finish;
+            if (finish) fields["finishing"] = finish;
             
             const imageWorkflow = getSelectValue(suggestionData.imgWorkflow);
-            if (imageWorkflow) fields["Image Workflow"] = imageWorkflow;
+            if (imageWorkflow) fields["workflow"] = imageWorkflow;
             
             const suggestionstatus = getSelectValue(suggestionData.suggestionstatus);
             if (suggestionstatus) fields["Suggestion Status"] = suggestionstatus;
             
-            // Estilo (relacionamento)
+            // Estilo (relacionamento) - nome correto do campo
             const estilo = getSelectValue(suggestionData.estilo);
             if (estilo) {
                 try {
@@ -229,7 +245,7 @@ export async function transferApprovedSuggestionToImages(
                     }).firstPage();
                     
                     if (styleRecords.length > 0) {
-                        fields["STYLE"] = [styleRecords[0].id];
+                        fields["style"] = [styleRecords[0].id]; // Array para relacionamento
                     }
                 } catch (styleError) {
                 }
@@ -260,8 +276,10 @@ export async function transferApprovedSuggestionToImages(
             }
             
             
-            // Criar registro individual na tabela Images
-            const result = await baseInstance("Images").create(fields);
+            // Criar registro individual na tabela Images copy
+            const result = await baseInstance("Images copy").create(fields);
+            
+            console.log(`✅ [transferApprovedSuggestionToImages] Registro criado: ${result.id}`);
             
             results.push({ 
                 index: i, 
@@ -271,6 +289,7 @@ export async function transferApprovedSuggestionToImages(
             });
             
         } catch (error) {
+            console.log(`❌ [transferApprovedSuggestionToImages] Erro na imagem ${i + 1}: ${error.message}`);
             results.push({ 
                 index: i, 
                 status: 'error', 
@@ -282,6 +301,11 @@ export async function transferApprovedSuggestionToImages(
     
     const successCount = results.filter(r => r.status === 'created').length;
     const errorCount = results.filter(r => r.status === 'error').length;
+    
+    console.log("📊 [transferApprovedSuggestionToImages] Resumo final:");
+    console.log("  - ✅ Sucessos:", successCount);
+    console.log("  - ❌ Erros:", errorCount);
+    console.log("  - 📋 Total processado:", results.length);
     
     
     // Retornar formato compatível com a rota
