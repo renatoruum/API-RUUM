@@ -1,0 +1,533 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Shotstack Video Render - Frontend</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        
+        .form-group {
+            margin-bottom: 20px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 600;
+            color: #555;
+        }
+        
+        textarea, input[type="file"], select {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 5px;
+            font-size: 14px;
+            box-sizing: border-box;
+        }
+        
+        textarea {
+            height: 200px;
+            font-family: 'Courier New', monospace;
+            resize: vertical;
+        }
+        
+        button {
+            background: #007cba;
+            color: white;
+            padding: 12px 25px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            margin-right: 10px;
+            margin-bottom: 10px;
+        }
+        
+        button:hover {
+            background: #005a87;
+        }
+        
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        
+        .status-container {
+            margin-top: 30px;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 5px;
+            border-left: 4px solid #007cba;
+        }
+        
+        .status-item {
+            margin-bottom: 10px;
+            padding: 8px;
+            border-radius: 3px;
+        }
+        
+        .status-queued, .status-rendering { background: #fff3cd; }
+        .status-done { background: #d4edda; }
+        .status-failed { background: #f8d7da; }
+        
+        .progress-bar {
+            width: 100%;
+            height: 20px;
+            background: #e9ecef;
+            border-radius: 10px;
+            overflow: hidden;
+            margin: 10px 0;
+        }
+        
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #007cba, #00a8e6);
+            transition: width 0.3s ease;
+        }
+        
+        .video-result {
+            margin-top: 20px;
+            text-align: center;
+        }
+        
+        .video-result video {
+            max-width: 100%;
+            border-radius: 5px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+        }
+        
+        .error {
+            color: #721c24;
+            background: #f8d7da;
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+        }
+        
+        .success {
+            color: #155724;
+            background: #d4edda;
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+        }
+        
+        .logs {
+            background: #2d3748;
+            color: #e2e8f0;
+            padding: 15px;
+            border-radius: 5px;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            height: 200px;
+            overflow-y: auto;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎬 Shotstack Video Render</h1>
+        
+        <form id="renderForm">
+            <div class="form-group">
+                <label>Método de Envio:</label>
+                <select id="inputMethod" onchange="toggleInputMethod()">
+                    <option value="json">JSON no Textarea</option>
+                    <option value="file">Upload de Arquivo JSON</option>
+                </select>
+            </div>
+            
+            <div class="form-group" id="jsonTextarea">
+                <label for="timelineJson">JSON do Timeline Shotstack:</label>
+                <textarea id="timelineJson" placeholder="Cole aqui o JSON do timeline do Shotstack...">{
+  "timeline": {
+    "tracks": [
+      {
+        "clips": [
+          {
+            "asset": {
+              "type": "text",
+              "text": "HELLO WORLD",
+              "font": {
+                "family": "Montserrat ExtraBold",
+                "color": "#ffffff",
+                "size": 32
+              }
+            },
+            "start": 0,
+            "length": 5,
+            "transition": {
+              "in": "fade",
+              "out": "fade"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "output": {
+    "format": "mp4",
+    "size": {
+      "width": 1024,
+      "height": 576
+    }
+  }
+}</textarea>
+            </div>
+            
+            <div class="form-group" id="fileUpload" style="display: none;">
+                <label for="jsonFile">Arquivo JSON:</label>
+                <input type="file" id="jsonFile" accept=".json">
+            </div>
+            
+            <div class="form-group">
+                <label>
+                    <input type="checkbox" id="waitForCompletion"> 
+                    Aguardar conclusão da renderização (pode demorar alguns minutos)
+                </label>
+            </div>
+            
+            <button type="submit" id="renderBtn">🚀 Iniciar Renderização</button>
+            <button type="button" id="clearBtn" onclick="clearResults()">🧹 Limpar</button>
+        </form>
+        
+        <div id="statusContainer" class="status-container" style="display: none;">
+            <h3>📊 Status da Renderização</h3>
+            <div id="statusContent"></div>
+            <div class="progress-bar">
+                <div id="progressFill" class="progress-fill" style="width: 0%"></div>
+            </div>
+            <button id="checkStatusBtn" onclick="checkStatus()" style="display: none;">🔍 Verificar Status</button>
+            <button id="stopPollingBtn" onclick="stopPolling()" style="display: none;">⏹️ Parar Monitoramento</button>
+        </div>
+        
+        <div id="resultContainer" style="display: none;">
+            <h3>🎉 Resultado</h3>
+            <div id="resultContent"></div>
+        </div>
+        
+        <div class="logs" id="logs"></div>
+    </div>
+
+    <script>
+        const API_BASE_URL = 'http://localhost:8080/api';
+        const AUTH_TOKEN = 'ruum-api-secure-token-2024';
+        
+        let currentRenderId = null;
+        let pollingInterval = null;
+        
+        // Adicionar log
+        function addLog(message, type = 'info') {
+            const logs = document.getElementById('logs');
+            const timestamp = new Date().toLocaleTimeString();
+            const logClass = type === 'error' ? 'color: #ff6b6b;' : 
+                            type === 'success' ? 'color: #51cf66;' : 
+                            type === 'warning' ? 'color: #ffd43b;' : 'color: #e2e8f0;';
+            
+            logs.innerHTML += `<div style="${logClass}">[${timestamp}] ${message}</div>`;
+            logs.scrollTop = logs.scrollHeight;
+        }
+        
+        // Alternar método de input
+        function toggleInputMethod() {
+            const method = document.getElementById('inputMethod').value;
+            const jsonTextarea = document.getElementById('jsonTextarea');
+            const fileUpload = document.getElementById('fileUpload');
+            
+            if (method === 'file') {
+                jsonTextarea.style.display = 'none';
+                fileUpload.style.display = 'block';
+            } else {
+                jsonTextarea.style.display = 'block';
+                fileUpload.style.display = 'none';
+            }
+        }
+        
+        // Enviar requisição de renderização
+        document.getElementById('renderForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const method = document.getElementById('inputMethod').value;
+            const waitForCompletion = document.getElementById('waitForCompletion').checked;
+            const renderBtn = document.getElementById('renderBtn');
+            
+            renderBtn.disabled = true;
+            renderBtn.textContent = '⏳ Renderizando...';
+            
+            addLog('🎬 Iniciando renderização...', 'info');
+            
+            try {
+                let formData = new FormData();
+                let isFileUpload = false;
+                
+                if (method === 'file') {
+                    const fileInput = document.getElementById('jsonFile');
+                    if (!fileInput.files[0]) {
+                        throw new Error('Selecione um arquivo JSON');
+                    }
+                    formData.append('jsonFile', fileInput.files[0]);
+                    isFileUpload = true;
+                } else {
+                    const jsonText = document.getElementById('timelineJson').value;
+                    if (!jsonText.trim()) {
+                        throw new Error('Digite o JSON do timeline');
+                    }
+                    
+                    // Para JSON no body, não usar FormData
+                    const jsonData = JSON.parse(jsonText);
+                    if (waitForCompletion) {
+                        jsonData.waitForCompletion = true;
+                    }
+                }
+                
+                const url = `${API_BASE_URL}/shotstack/render${waitForCompletion && !isFileUpload ? '?wait=true' : ''}`;
+                
+                const options = {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${AUTH_TOKEN}`
+                    }
+                };
+                
+                if (isFileUpload) {
+                    options.body = formData;
+                } else {
+                    const jsonData = JSON.parse(document.getElementById('timelineJson').value);
+                    if (waitForCompletion) {
+                        jsonData.waitForCompletion = true;
+                    }
+                    options.headers['Content-Type'] = 'application/json';
+                    options.body = JSON.stringify(jsonData);
+                }
+                
+                const response = await fetch(url, options);
+                const result = await response.json();
+                
+                if (!response.ok) {
+                    throw new Error(result.message || 'Erro na requisição');
+                }
+                
+                addLog('✅ Renderização iniciada com sucesso!', 'success');
+                
+                if (waitForCompletion && result.data.url) {
+                    // Renderização completa
+                    showResult(result.data);
+                } else {
+                    // Iniciar polling
+                    currentRenderId = result.data.renderId;
+                    showStatusContainer();
+                    startPolling();
+                }
+                
+            } catch (error) {
+                addLog(`❌ Erro: ${error.message}`, 'error');
+                showError(error.message);
+            } finally {
+                renderBtn.disabled = false;
+                renderBtn.textContent = '🚀 Iniciar Renderização';
+            }
+        });
+        
+        // Mostrar container de status
+        function showStatusContainer() {
+            document.getElementById('statusContainer').style.display = 'block';
+            document.getElementById('checkStatusBtn').style.display = 'inline-block';
+            document.getElementById('stopPollingBtn').style.display = 'inline-block';
+        }
+        
+        // Iniciar polling automático
+        function startPolling() {
+            if (pollingInterval) {
+                clearInterval(pollingInterval);
+            }
+            
+            addLog('🔄 Iniciando monitoramento automático...', 'info');
+            
+            pollingInterval = setInterval(() => {
+                checkStatus();
+            }, 5000); // Verifica a cada 5 segundos
+            
+            // Primeira verificação imediata
+            checkStatus();
+        }
+        
+        // Parar polling
+        function stopPolling() {
+            if (pollingInterval) {
+                clearInterval(pollingInterval);
+                pollingInterval = null;
+                addLog('⏸️ Monitoramento automático parado', 'warning');
+            }
+            document.getElementById('stopPollingBtn').style.display = 'none';
+        }
+        
+        // Verificar status
+        async function checkStatus() {
+            if (!currentRenderId) {
+                addLog('❌ Nenhuma renderização ativa', 'error');
+                return;
+            }
+            
+            try {
+                const response = await fetch(`${API_BASE_URL}/shotstack/status/${currentRenderId}`, {
+                    headers: {
+                        'Authorization': `Bearer ${AUTH_TOKEN}`
+                    }
+                });
+                
+                const result = await response.json();
+                
+                if (!response.ok) {
+                    throw new Error(result.message || 'Erro ao verificar status');
+                }
+                
+                const status = result.data.status;
+                addLog(`📊 Status: ${status}`, 'info');
+                
+                updateStatusDisplay(result.data);
+                
+                if (status === 'done') {
+                    addLog('🎉 Renderização concluída!', 'success');
+                    stopPolling();
+                    showResult(result.data);
+                } else if (status === 'failed') {
+                    addLog(`❌ Renderização falhou: ${result.data.error}`, 'error');
+                    stopPolling();
+                    showError(result.data.error);
+                }
+                
+            } catch (error) {
+                addLog(`❌ Erro ao verificar status: ${error.message}`, 'error');
+            }
+        }
+        
+        // Atualizar display de status
+        function updateStatusDisplay(data) {
+            const statusContent = document.getElementById('statusContent');
+            const progressFill = document.getElementById('progressFill');
+            
+            let progressPercent = 0;
+            let statusClass = '';
+            
+            switch (data.status) {
+                case 'queued':
+                    progressPercent = 10;
+                    statusClass = 'status-queued';
+                    break;
+                case 'rendering':
+                    progressPercent = 50;
+                    statusClass = 'status-rendering';
+                    break;
+                case 'done':
+                    progressPercent = 100;
+                    statusClass = 'status-done';
+                    break;
+                case 'failed':
+                    progressPercent = 100;
+                    statusClass = 'status-failed';
+                    break;
+                default:
+                    progressPercent = 25;
+                    statusClass = 'status-queued';
+            }
+            
+            progressFill.style.width = `${progressPercent}%`;
+            
+            statusContent.innerHTML = `
+                <div class="status-item ${statusClass}">
+                    <strong>ID:</strong> ${data.id}<br>
+                    <strong>Status:</strong> ${data.status}<br>
+                    <strong>Criado:</strong> ${data.created ? new Date(data.created).toLocaleString() : 'N/A'}<br>
+                    <strong>Atualizado:</strong> ${data.updated ? new Date(data.updated).toLocaleString() : 'N/A'}
+                    ${data.duration ? `<br><strong>Duração:</strong> ${data.duration}s` : ''}
+                    ${data.renderTime ? `<br><strong>Tempo de Render:</strong> ${data.renderTime}s` : ''}
+                    ${data.error ? `<br><strong>Erro:</strong> ${data.error}` : ''}
+                </div>
+            `;
+        }
+        
+        // Mostrar resultado final
+        function showResult(data) {
+            document.getElementById('resultContainer').style.display = 'block';
+            const resultContent = document.getElementById('resultContent');
+            
+            let content = `
+                <div class="success">
+                    ✅ Vídeo renderizado com sucesso!
+                </div>
+                <p><strong>URL do Vídeo:</strong> <a href="${data.url}" target="_blank">${data.url}</a></p>
+                <p><strong>Duração:</strong> ${data.duration}s</p>
+                <p><strong>Tempo de Renderização:</strong> ${data.renderTime}s</p>
+            `;
+            
+            if (data.url) {
+                content += `
+                    <div class="video-result">
+                        <video controls>
+                            <source src="${data.url}" type="video/mp4">
+                            Seu navegador não suporta o elemento video.
+                        </video>
+                    </div>
+                `;
+            }
+            
+            if (data.poster) {
+                content += `<p><strong>Poster:</strong> <a href="${data.poster}" target="_blank">Ver Poster</a></p>`;
+            }
+            
+            if (data.thumbnail) {
+                content += `<p><strong>Thumbnail:</strong> <a href="${data.thumbnail}" target="_blank">Ver Thumbnail</a></p>`;
+            }
+            
+            resultContent.innerHTML = content;
+        }
+        
+        // Mostrar erro
+        function showError(message) {
+            document.getElementById('resultContainer').style.display = 'block';
+            document.getElementById('resultContent').innerHTML = `
+                <div class="error">
+                    ❌ ${message}
+                </div>
+            `;
+        }
+        
+        // Limpar resultados
+        function clearResults() {
+            document.getElementById('statusContainer').style.display = 'none';
+            document.getElementById('resultContainer').style.display = 'none';
+            document.getElementById('logs').innerHTML = '';
+            
+            stopPolling();
+            currentRenderId = null;
+            
+            addLog('🧹 Resultados limpos', 'info');
+        }
+        
+        // Log inicial
+        addLog('🚀 Sistema inicializado', 'success');
+    </script>
+</body>
+</html>

@@ -23,6 +23,15 @@ app.use(cors());
 
 // Middleware para logging de requisições
 app.use((req, res, next) => {
+    console.log(`${new Date().toISOString()} - ${req.method} ${req.url}`);
+    console.log('Headers:', JSON.stringify(req.headers, null, 2));
+    
+    // Para rotas Shotstack, log adicional
+    if (req.url.includes('shotstack')) {
+        console.log('🎬 Shotstack request detected:', req.url);
+        console.log('Body preview:', req.body ? JSON.stringify(req.body).substring(0, 200) + '...' : 'No body');
+    }
+    
     next();
 });
 

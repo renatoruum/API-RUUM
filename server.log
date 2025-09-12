@@ -1,0 +1,20 @@
+
+> src@1.0.0 start
+> node src/app.js
+
+Arquivo de service account não disponível, usando variáveis de ambiente: Arquivo de service account está vazio
+❌ Erro ao inicializar Firebase: Failed to parse private key: Error: Invalid PEM formatted message.
+Server running on port 8080
+Environment: production
+❌ Erro ao verificar status: { success: false, message: 'Bad Request', response: {} }
+🎬 Iniciando renderização Shotstack...
+🎬 Iniciando renderização Shotstack...
+✅ Renderização iniciada com ID: d1699729-e53d-4a52-a573-5d1adfa7f8c1
+📊 Verificando status da renderização: d1699729-e53d-4a52-a573-5d1adfa7f8c1
+❌ Erro ao verificar status: { success: false, message: 'Bad Request', response: {} }
+🎬 Iniciando renderização Shotstack...
+🎬 Iniciando renderização Shotstack...
+✅ Renderização iniciada com ID: be7b27fd-4d60-4890-961d-fbd4a1ab1126
+🎬 Iniciando renderização Shotstack...
+🎬 Iniciando renderização Shotstack...
+✅ Renderização iniciada com ID: 9d25d632-e2cd-4141-998b-7cc46f6e254c

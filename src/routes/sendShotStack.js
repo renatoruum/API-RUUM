@@ -8,373 +8,176 @@ import {
     checkRenderStatus, 
     waitForRenderCompletion, 
     renderVideo, 
-    createImageSlideshow,
-    validateTimeline,
-    diagnoseShotstack,
-    testShotstackAuth,
-    testShotstackRender
 } from "../connectors/shotstack.js";
 
 const router = express.Router();
 
-// Configuração do multer para upload de áudio
-const audioStorage = multer.diskStorage({
+// Configuração do multer para upload de arquivos JSON
+const storage = multer.diskStorage({
     destination: (req, file, cb) => {
-        const uploadDir = path.join(process.cwd(), 'uploads', 'audio');
-        // Criar diretório se não existir
-        fs.mkdirSync(uploadDir, { recursive: true });
+        const uploadDir = "./uploads/shotstack";
+        if (!fs.existsSync(uploadDir)) {
+            fs.mkdirSync(uploadDir, { recursive: true });
+        }
         cb(null, uploadDir);
     },
     filename: (req, file, cb) => {
-        // Gerar nome único para o arquivo
-        const uniqueId = uuidv4();
-        const ext = path.extname(file.originalname);
-        cb(null, `${uniqueId}${ext}`);
+        const uniqueName = `${uuidv4()}-${file.originalname}`;
+        cb(null, uniqueName);
     }
 });
 
-const audioUpload = multer({
-    storage: audioStorage,
-    limits: {
-        fileSize: 10 * 1024 * 1024, // 10MB máximo
-    },
+const upload = multer({ 
+    storage: storage,
     fileFilter: (req, file, cb) => {
-        
-        // Verificar se é um arquivo de áudio
-        const allowedMimes = [
-            'audio/mpeg',
-            'audio/mp3',
-            'audio/wav',
-            'audio/wave',
-            'audio/x-wav',
-            'audio/ogg',
-            'audio/aac',
-            'audio/webm',
-            'audio/x-m4a',
-            'audio/aiff',
-            'audio/x-aiff'
-        ];
-        
-        // Verificar extensão do arquivo como fallback
-        const ext = path.extname(file.originalname).toLowerCase();
-        const allowedExtensions = ['.mp3', '.wav', '.ogg', '.aac', '.webm', '.m4a', '.aiff'];
-        
-        if (allowedMimes.includes(file.mimetype) || allowedExtensions.includes(ext)) {
+        // Aceita apenas arquivos JSON
+        if (file.mimetype === 'application/json' || file.originalname.endsWith('.json')) {
             cb(null, true);
         } else {
-            cb(new Error(`Tipo de arquivo não suportado. MIME: ${file.mimetype}, Extensão: ${ext}`));
+            cb(new Error('Apenas arquivos JSON são permitidos'), false);
         }
+    },
+    limits: {
+        fileSize: 10 * 1024 * 1024 // 10MB
     }
 });
 
-// Função para limpar arquivos antigos (executar periodicamente)
-const cleanupOldAudioFiles = () => {
-    const audioDir = path.join(process.cwd(), 'uploads', 'audio');
-    const maxAge = 24 * 60 * 60 * 1000; // 24 horas em ms
-    
-    if (!fs.existsSync(audioDir)) return;
-    
+/**
+ * POST /shotstack/render
+ * Inicia uma renderização de vídeo com dados JSON
+ * Aceita JSON no body ou arquivo JSON via upload
+ */
+router.post("/shotstack/render", upload.single('jsonFile'), async (req, res) => {
     try {
-        const files = fs.readdirSync(audioDir);
-        files.forEach(file => {
-            const filePath = path.join(audioDir, file);
-            const stats = fs.statSync(filePath);
-            
-            if (Date.now() - stats.mtime.getTime() > maxAge) {
-                fs.unlinkSync(filePath);
-            }
-        });
-    } catch (error) {
-    }
-};
-
-// Executar limpeza a cada hora
-setInterval(cleanupOldAudioFiles, 60 * 60 * 1000);
-
-// Rota para upload de áudio
-router.post("/audio/upload", (req, res) => {
-    
-    audioUpload.single('audio')(req, res, async (err) => {
-        try {
-            if (err) {
+        let timelineData;
+        
+        // Verifica se foi enviado um arquivo JSON
+        if (req.file) {
+            try {
+                const fileContent = fs.readFileSync(req.file.path, 'utf8');
+                timelineData = JSON.parse(fileContent);
+                
+                // Remove o arquivo temporário após leitura
+                fs.unlinkSync(req.file.path);
+            } catch (error) {
+                // Remove o arquivo temporário em caso de erro
+                if (req.file && fs.existsSync(req.file.path)) {
+                    fs.unlinkSync(req.file.path);
+                }
                 return res.status(400).json({
                     success: false,
-                    message: "Erro no upload de áudio",
-                    error: err.message
+                    message: "Erro ao processar arquivo JSON",
+                    error: error.message
                 });
             }
+        } 
+        // Verifica se foi enviado JSON no body
+        else if (req.body && (req.body.timeline || req.body.output)) {
+            timelineData = req.body;
+        } 
+        else {
+            return res.status(400).json({
+                success: false,
+                message: "É necessário enviar um arquivo JSON ou dados JSON no body da requisição",
+                example: {
+                    "timeline": {
+                        "tracks": [
+                            {
+                                "clips": [
+                                    {
+                                        "asset": {
+                                            "type": "text",
+                                            "text": "HELLO WORLD"
+                                        },
+                                        "start": 0,
+                                        "length": 5
+                                    }
+                                ]
+                            }
+                        ]
+                    },
+                    "output": {
+                        "format": "mp4",
+                        "size": {
+                            "width": 1024,
+                            "height": 576
+                        }
+                    }
+                }
+            });
+        }
 
-            if (!req.file) {
-                return res.status(400).json({
-                    success: false,
-                    message: "Nenhum arquivo de áudio foi enviado"
-                });
-            }
+        // Validação básica da estrutura do JSON
+        if (!timelineData.timeline) {
+            return res.status(400).json({
+                success: false,
+                message: "O JSON deve conter uma propriedade 'timeline'"
+            });
+        }
 
-            const audioId = path.parse(req.file.filename).name;
-            const audioUrl = `${req.protocol}://${req.get('host')}/api/audio/${audioId}`;
+        if (!timelineData.output) {
+            return res.status(400).json({
+                success: false,
+                message: "O JSON deve conter uma propriedade 'output'"
+            });
+        }
 
+        // Verifica se deve aguardar a conclusão da renderização
+        const waitForCompletion = req.query.wait === 'true' || req.body.waitForCompletion === true;
+        
+        console.log(`🎬 Iniciando renderização Shotstack${waitForCompletion ? ' (aguardando conclusão)' : ''}...`);
 
+        // Inicia a renderização
+        const result = await renderVideo(timelineData, waitForCompletion);
+
+        if (!result.success) {
+            return res.status(500).json({
+                success: false,
+                message: "Erro ao processar renderização",
+                error: result.error
+            });
+        }
+
+        // Resposta baseada no tipo de processamento
+        if (waitForCompletion) {
+            // Se aguardou a conclusão, retorna o resultado completo
             res.json({
                 success: true,
-                message: "Upload de áudio realizado com sucesso",
-                audioId: audioId,
-                url: audioUrl,
-                filename: req.file.filename,
-                size: req.file.size,
-                mimetype: req.file.mimetype
+                message: "Vídeo renderizado com sucesso",
+                data: {
+                    id: result.id,
+                    status: result.status,
+                    url: result.url,
+                    poster: result.poster,
+                    thumbnail: result.thumbnail,
+                    duration: result.duration,
+                    renderTime: result.renderTime,
+                    created: result.created,
+                    updated: result.updated
+                }
             });
-
-        } catch (error) {
-            res.status(500).json({
-                success: false,
-                message: "Erro interno no upload de áudio",
-                error: error.message
-            });
-        }
-    });
-});
-
-// Rota para testar configuração do multer
-router.get("/audio/test-config", (req, res) => {
-    try {
-        const uploadDir = path.join(process.cwd(), 'uploads', 'audio');
-        
-        // Verificar se diretório existe
-        const dirExists = fs.existsSync(uploadDir);
-        
-        // Tentar criar diretório se não existir
-        if (!dirExists) {
-            try {
-                fs.mkdirSync(uploadDir, { recursive: true });
-            } catch (mkdirError) {
-                return res.status(500).json({
-                    success: false,
-                    message: "Erro ao criar diretório de uploads",
-                    error: mkdirError.message,
-                    uploadDir: uploadDir
-                });
-            }
-        }
-        
-        // Verificar permissões
-        let canWrite = false;
-        try {
-            fs.accessSync(uploadDir, fs.constants.W_OK);
-            canWrite = true;
-        } catch (accessError) {
-        }
-        
-        res.json({
-            success: true,
-            message: "Configuração testada",
-            config: {
-                uploadDir: uploadDir,
-                dirExists: fs.existsSync(uploadDir),
-                canWrite: canWrite,
-                cwd: process.cwd()
-            }
-        });
-        
-    } catch (error) {
-        res.status(500).json({
-            success: false,
-            message: "Erro no teste de configuração",
-            error: error.message
-        });
-    }
-});
-
-// Rota para servir arquivos de áudio publicamente
-router.get("/audio/:id", async (req, res) => {
-    try {
-        const { id } = req.params;
-        
-        if (!id) {
-            return res.status(400).json({
-                success: false,
-                message: "ID do áudio é obrigatório"
-            });
-        }
-
-        const audioDir = path.join(process.cwd(), 'uploads', 'audio');
-        
-        // Procurar arquivo com o ID (independente da extensão)
-        const files = fs.readdirSync(audioDir);
-        const audioFile = files.find(file => file.startsWith(id));
-
-        if (!audioFile) {
-            return res.status(404).json({
-                success: false,
-                message: "Arquivo de áudio não encontrado"
-            });
-        }
-
-        const audioPath = path.join(audioDir, audioFile);
-        
-        // Verificar se arquivo existe
-        if (!fs.existsSync(audioPath)) {
-            return res.status(404).json({
-                success: false,
-                message: "Arquivo de áudio não encontrado"
-            });
-        }
-
-        // Obter informações do arquivo
-        const stats = fs.statSync(audioPath);
-        const ext = path.extname(audioFile).toLowerCase();
-        
-        // Determinar Content-Type baseado na extensão
-        const contentTypes = {
-            '.mp3': 'audio/mpeg',
-            '.wav': 'audio/wav',
-            '.ogg': 'audio/ogg',
-            '.aac': 'audio/aac',
-            '.webm': 'audio/webm'
-        };
-
-        const contentType = contentTypes[ext] || 'audio/mpeg';
-
-        // Configurar headers para cache e streaming
-        res.set({
-            'Content-Type': contentType,
-            'Content-Length': stats.size,
-            'Cache-Control': 'public, max-age=86400', // Cache por 24 horas
-            'Accept-Ranges': 'bytes',
-            'Content-Disposition': `inline; filename="${audioFile}"`
-        });
-
-        // Stream do arquivo para o cliente
-        const stream = fs.createReadStream(audioPath);
-        stream.pipe(res);
-
-    } catch (error) {
-        res.status(500).json({
-            success: false,
-            message: "Erro interno ao servir áudio",
-            error: error.message
-        });
-    }
-});
-
-// Rota para deletar arquivo de áudio (opcional)
-router.delete("/audio/:id", async (req, res) => {
-    try {
-        const { id } = req.params;
-        
-        if (!id) {
-            return res.status(400).json({
-                success: false,
-                message: "ID do áudio é obrigatório"
-            });
-        }
-
-        const audioDir = path.join(process.cwd(), 'uploads', 'audio');
-        
-        // Procurar arquivo com o ID
-        const files = fs.readdirSync(audioDir);
-        const audioFile = files.find(file => file.startsWith(id));
-
-        if (!audioFile) {
-            return res.status(404).json({
-                success: false,
-                message: "Arquivo de áudio não encontrado"
-            });
-        }
-
-        const audioPath = path.join(audioDir, audioFile);
-        
-        // Remover arquivo
-        fs.unlinkSync(audioPath);
-        
-
-        res.json({
-            success: true,
-            message: "Arquivo de áudio removido com sucesso",
-            audioId: id,
-            filename: audioFile
-        });
-
-    } catch (error) {
-        res.status(500).json({
-            success: false,
-            message: "Erro interno ao deletar áudio",
-            error: error.message
-        });
-    }
-});
-
-// Rota para listar arquivos de áudio (debug/admin)
-router.get("/audio", async (req, res) => {
-    try {
-        const audioDir = path.join(process.cwd(), 'uploads', 'audio');
-        
-        if (!fs.existsSync(audioDir)) {
-            return res.json({
+        } else {
+            // Se não aguardou, retorna estrutura compatível com React
+            res.json({
                 success: true,
-                message: "Diretório de áudio não existe",
-                files: []
+                message: "Renderização iniciada com sucesso",
+                data: {
+                    id: result.renderId,
+                    renderId: result.renderId,
+                    status: result.status || 'queued',
+                    statusCheckUrl: `/api/shotstack/status/${result.renderId}`
+                }
             });
         }
-
-        const files = fs.readdirSync(audioDir);
-        const audioFiles = files.map(file => {
-            const filePath = path.join(audioDir, file);
-            const stats = fs.statSync(filePath);
-            const audioId = path.parse(file).name;
-            
-            return {
-                id: audioId,
-                filename: file,
-                size: stats.size,
-                created: stats.birthtime,
-                modified: stats.mtime,
-                url: `${req.protocol}://${req.get('host')}/api/audio/${audioId}`
-            };
-        });
-
-        res.json({
-            success: true,
-            message: "Lista de arquivos de áudio",
-            count: audioFiles.length,
-            files: audioFiles
-        });
 
     } catch (error) {
-        res.status(500).json({
-            success: false,
-            message: "Erro interno ao listar áudios",
-            error: error.message
-        });
-    }
-});
-
-// Rota para iniciar renderização (modo async)
-router.post("/shotstack/render", async (req, res) => {
-    try {
-        const { timeline, output } = req.body;
-
-        // Validação básica
-        if (!timeline) {
-            return res.status(400).json({
-                success: false,
-                message: "Timeline é obrigatória"
-            });
-        }
-
-        if (!validateTimeline(timeline)) {
-            return res.status(400).json({
-                success: false,
-                message: "Timeline inválida. Deve conter pelo menos uma track com clips."
-            });
-        }
-
-        // Inicia renderização
-        const result = await startRender(timeline, output);
+        console.error('❌ Erro na rota de renderização:', error);
         
-        res.json(result);
-
-    } catch (error) {
+        // Remove arquivo temporário se houver erro
+        if (req.file && fs.existsSync(req.file.path)) {
+            fs.unlinkSync(req.file.path);
+        }
+        
         res.status(500).json({
             success: false,
             message: "Erro interno do servidor",
@@ -383,566 +186,138 @@ router.post("/shotstack/render", async (req, res) => {
     }
 });
 
-// Rota para verificar status da renderização
-router.get("/shotstack/status/:id", async (req, res) => {
+/**
+ * GET /shotstack/status/:renderId
+ * Verifica o status de uma renderização específica
+ */
+router.get("/shotstack/status/:renderId", async (req, res) => {
     try {
-        const { id } = req.params;
-
-        if (!id) {
+        const { renderId } = req.params;
+        
+        if (!renderId) {
             return res.status(400).json({
                 success: false,
                 message: "ID da renderização é obrigatório"
             });
         }
 
-        const result = await checkRenderStatus(id);
-        
-        res.json(result);
+        console.log(`📊 Verificando status da renderização: ${renderId}`);
 
-    } catch (error) {
-        res.status(500).json({
-            success: false,
-            message: "Erro ao verificar status",
-            error: error.message
-        });
-    }
-});
+        const result = await checkRenderStatus(renderId);
 
-// Rota para renderizar e aguardar conclusão (modo sync)
-router.post("/shotstack/render-sync", async (req, res) => {
-    try {
-        const { timeline, output, timeout = 300000 } = req.body; // 5 minutos default
-
-        // Validação básica
-        if (!timeline) {
-            return res.status(400).json({
+        if (!result.success) {
+            return res.status(500).json({
                 success: false,
-                message: "Timeline é obrigatória"
+                message: "Erro ao verificar status da renderização",
+                error: result.error
             });
         }
 
-        if (!validateTimeline(timeline)) {
-            return res.status(400).json({
-                success: false,
-                message: "Timeline inválida"
-            });
-        }
-
-        // Configurar timeout da requisição
-        req.setTimeout(timeout);
-
-        // Renderizar e aguardar conclusão
-        const result = await renderVideo(timeline, output, true);
-        
-        res.json(result);
-
-    } catch (error) {
-        
-        if (error.message.includes("Timeout")) {
-            return res.status(408).json({
-                success: false,
-                message: "Timeout na renderização",
-                error: error.message
-            });
-        }
-
-        res.status(500).json({
-            success: false,
-            message: "Erro na renderização",
-            error: error.message
-        });
-    }
-});
-
-// Rota para criar slideshow de imagens
-router.post("/shotstack/slideshow", async (req, res) => {
-    try {
-        const { 
-            images, 
-            duration = 3, 
-            output = {}, 
-            soundtrack = null, 
-            transition = "fade",
-            textOverlay = null,
-            waitForCompletion = false
-        } = req.body;
-
-        // Validação
-        if (!images || !Array.isArray(images) || images.length === 0) {
-            return res.status(400).json({
-                success: false,
-                message: "Array de imagens é obrigatório e deve conter pelo menos uma imagem"
-            });
-        }
-
-        // Validar URLs das imagens
-        const invalidImages = images.filter(img => {
-            try {
-                new URL(img);
-                return false;
-            } catch {
-                return true;
-            }
-        });
-
-        if (invalidImages.length > 0) {
-            return res.status(400).json({
-                success: false,
-                message: "URLs de imagens inválidas encontradas",
-                invalidImages
-            });
-        }
-
-        // Criar timeline para slideshow
-        const timeline = createImageSlideshow(images, duration, {
-            soundtrack,
-            transition,
-            textOverlay
-        });
-
-        // Renderizar
-        const result = await renderVideo(timeline, output, waitForCompletion);
-        
-        res.json(result);
-
-    } catch (error) {
-        res.status(500).json({
-            success: false,
-            message: "Erro na criação do slideshow",
-            error: error.message
-        });
-    }
-});
-
-// Rota para templates pré-definidos
-router.post("/shotstack/template/:templateName", async (req, res) => {
-    try {
-        const { templateName } = req.params;
-        const { data, output = {}, waitForCompletion = false } = req.body;
-
-        let timeline;
-
-        switch (templateName) {
-            case "property-showcase":
-                timeline = createPropertyShowcaseTemplate(data);
-                break;
-            case "image-gallery":
-                timeline = createImageGalleryTemplate(data);
-                break;
-            case "promotional-video":
-                timeline = createPromotionalVideoTemplate(data);
-                break;
-            default:
-                return res.status(400).json({
-                    success: false,
-                    message: `Template '${templateName}' não encontrado`,
-                    availableTemplates: ["property-showcase", "image-gallery", "promotional-video"]
-                });
-        }
-
-        const result = await renderVideo(timeline, output, waitForCompletion);
-        
-        res.json(result);
-
-    } catch (error) {
-        res.status(500).json({
-            success: false,
-            message: "Erro na renderização do template",
-            error: error.message
-        });
-    }
-});
-
-// Rota para polling com Server-Sent Events (tempo real)
-router.get("/shotstack/status-stream/:id", async (req, res) => {
-    try {
-        const { id } = req.params;
-
-        if (!id) {
-            return res.status(400).json({
-                success: false,
-                message: "ID da renderização é obrigatório"
-            });
-        }
-
-        // Configurar headers para SSE
-        res.writeHead(200, {
-            'Content-Type': 'text/event-stream',
-            'Cache-Control': 'no-cache',
-            'Connection': 'keep-alive',
-            'Access-Control-Allow-Origin': '*',
-            'Access-Control-Allow-Headers': 'Cache-Control'
-        });
-
-        // Enviar dados iniciais
-        res.write('data: {"type": "connected", "message": "Conexão estabelecida"}\n\n');
-
-        const pollInterval = setInterval(async () => {
-            try {
-                const result = await checkRenderStatus(id);
-                
-                // Enviar status atual
-                res.write(`data: ${JSON.stringify({
-                    type: 'status',
-                    ...result,
-                    timestamp: new Date().toISOString()
-                })}\n\n`);
-
-                // Se concluído ou falhou, encerrar stream
-                if (result.status === 'done' || result.status === 'failed') {
-                    res.write(`data: ${JSON.stringify({
-                        type: 'complete',
-                        finalStatus: result.status,
-                        url: result.url
-                    })}\n\n`);
-                    
-                    clearInterval(pollInterval);
-                    res.end();
-                }
-
-            } catch (error) {
-                res.write(`data: ${JSON.stringify({
-                    type: 'error',
-                    message: error.message,
-                    timestamp: new Date().toISOString()
-                })}\n\n`);
-                
-                clearInterval(pollInterval);
-                res.end();
-            }
-        }, 3000); // Polling a cada 3 segundos
-
-        // Cleanup quando cliente desconecta
-        req.on('close', () => {
-            clearInterval(pollInterval);
-            res.end();
-        });
-
-        req.on('end', () => {
-            clearInterval(pollInterval);
-            res.end();
-        });
-
-    } catch (error) {
-        res.status(500).json({
-            success: false,
-            message: "Erro ao iniciar stream de status",
-            error: error.message
-        });
-    }
-});
-
-// Rota para polling com timeout configurável
-router.get("/shotstack/poll/:id", async (req, res) => {
-    try {
-        const { id } = req.params;
-        const { timeout = 300000, interval = 5000 } = req.query; // 5 min timeout, 5s interval
-
-        if (!id) {
-            return res.status(400).json({
-                success: false,
-                message: "ID da renderização é obrigatório"
-            });
-        }
-
-        const startTime = Date.now();
-        const maxWait = parseInt(timeout);
-        const pollInterval = parseInt(interval);
-
-        // Função de polling
-        const poll = async () => {
-            const result = await checkRenderStatus(id);
-            
-            // Se concluído, retornar resultado
-            if (result.status === 'done' || result.status === 'failed') {
-                return res.json({
-                    success: true,
-                    completed: true,
-                    duration: Date.now() - startTime,
-                    ...result
-                });
-            }
-
-            // Se ainda em progresso e não expirou timeout
-            if (Date.now() - startTime < maxWait) {
-                setTimeout(poll, pollInterval);
-            } else {
-                // Timeout
-                return res.json({
-                    success: false,
-                    completed: false,
-                    timeout: true,
-                    duration: Date.now() - startTime,
-                    message: "Timeout: renderização ainda em progresso",
-                    lastStatus: result
-                });
-            }
-        };
-
-        // Iniciar polling
-        await poll();
-
-    } catch (error) {
-        res.status(500).json({
-            success: false,
-            message: "Erro no polling",
-            error: error.message
-        });
-    }
-});
-
-// Rota para diagnóstico da API ShotStack
-router.get("/shotstack/diagnose", async (req, res) => {
-    try {
-        
-        const results = await diagnoseShotstack();
-        
-        // Determinar status HTTP baseado nos resultados
-        const statusCode = results.tests.authentication.success ? 200 : 500;
-        
-        res.status(statusCode).json({
-            success: results.tests.authentication.success,
-            message: results.tests.authentication.success ? 
-                "Diagnóstico concluído com sucesso" : 
-                "Problemas detectados na configuração ShotStack",
-            results: results,
-            timestamp: new Date().toISOString()
-        });
-
-    } catch (error) {
-        res.status(500).json({
-            success: false,
-            message: "Erro ao executar diagnóstico",
-            error: error.message
-        });
-    }
-});
-
-// Rota para teste rápido de autenticação
-router.get("/shotstack/test-auth", async (req, res) => {
-    try {
-        
-        const result = await testShotstackAuth();
-        
-        const statusCode = result.success ? 200 : 401;
-        
-        res.status(statusCode).json({
-            success: result.success,
-            message: result.message,
-            error: result.error,
-            details: result.details,
-            timestamp: new Date().toISOString()
-        });
-
-    } catch (error) {
-        res.status(500).json({
-            success: false,
-            message: "Erro ao testar autenticação",
-            error: error.message
-        });
-    }
-});
-
-// Rota para teste de renderização mínima
-router.post("/shotstack/test-render", async (req, res) => {
-    try {
-        
-        const result = await testShotstackRender();
-        
-        const statusCode = result.success ? 200 : 400;
-        
-        res.status(statusCode).json({
-            success: result.success,
-            message: result.message,
-            renderId: result.renderId,
-            error: result.error,
-            timestamp: new Date().toISOString()
-        });
-
-    } catch (error) {
-        res.status(500).json({
-            success: false,
-            message: "Erro ao testar renderização",
-            error: error.message
-        });
-    }
-});
-
-// Rota para diagnóstico de upload
-router.get("/shotstack/audio-debug", (req, res) => {
-    try {
-        const uploadDir = path.join(process.cwd(), 'uploads', 'audio');
-        
-        // Verificar se diretório existe
-        const dirExists = fs.existsSync(uploadDir);
-        
-        // Tentar criar diretório se não existir
-        if (!dirExists) {
-            try {
-                fs.mkdirSync(uploadDir, { recursive: true });
-            } catch (mkdirError) {
-                return res.status(500).json({
-                    success: false,
-                    message: "Erro ao criar diretório de uploads",
-                    error: mkdirError.message,
-                    uploadDir: uploadDir
-                });
-            }
-        }
-        
-        // Verificar permissões
-        let canWrite = false;
-        try {
-            fs.accessSync(uploadDir, fs.constants.W_OK);
-            canWrite = true;
-        } catch (accessError) {
-        }
-        
         res.json({
             success: true,
-            message: "Configuração testada",
-            config: {
-                uploadDir: uploadDir,
-                dirExists: fs.existsSync(uploadDir),
-                canWrite: canWrite,
-                cwd: process.cwd(),
-                platform: process.platform,
-                env: process.env.NODE_ENV || 'development'
+            data: {
+                id: result.id,
+                status: result.status,
+                url: result.url,
+                poster: result.poster,
+                thumbnail: result.thumbnail,
+                duration: result.duration,
+                renderTime: result.renderTime,
+                created: result.created,
+                updated: result.updated,
+                error: result.error
             }
         });
-        
+
     } catch (error) {
+        console.error('❌ Erro ao verificar status:', error);
         res.status(500).json({
             success: false,
-            message: "Erro no teste de configuração",
+            message: "Erro interno do servidor",
             error: error.message
         });
     }
 });
 
-// Funções auxiliares para templates
-function createPropertyShowcaseTemplate(data) {
-    const { images, title, description, duration = 4 } = data;
-    
-    const imageClips = images.map((img, index) => ({
-        asset: {
-            type: "image",
-            src: img
-        },
-        start: index * duration,
-        length: duration,
-        effect: "zoomIn"
-    }));
+/**
+ * POST /shotstack/wait/:renderId
+ * Aguarda a conclusão de uma renderização com polling
+ */
+router.post("/shotstack/wait/:renderId", async (req, res) => {
+    try {
+        const { renderId } = req.params;
+        const { maxWaitTime = 300, pollInterval = 5 } = req.body;
+        
+        if (!renderId) {
+            return res.status(400).json({
+                success: false,
+                message: "ID da renderização é obrigatório"
+            });
+        }
 
-    const timeline = {
-        tracks: [
-            {
-                clips: imageClips
+        console.log(`⏳ Aguardando conclusão da renderização: ${renderId}`);
+
+        const result = await waitForRenderCompletion(renderId, maxWaitTime, pollInterval);
+
+        if (!result.success) {
+            return res.status(500).json({
+                success: false,
+                message: "Erro durante a espera pela renderização",
+                error: result.error,
+                status: result.status
+            });
+        }
+
+        res.json({
+            success: true,
+            message: "Renderização concluída com sucesso",
+            data: {
+                id: result.id,
+                status: result.status,
+                url: result.url,
+                poster: result.poster,
+                thumbnail: result.thumbnail,
+                duration: result.duration,
+                renderTime: result.renderTime,
+                created: result.created,
+                updated: result.updated
             }
-        ]
-    };
+        });
 
-    if (title) {
-        timeline.tracks.push({
-            clips: [{
-                asset: {
-                    type: "title",
-                    text: title,
-                    style: "future",
-                    color: "#ffffff",
-                    size: "large"
-                },
-                start: 0,
-                length: 3,
-                position: "center"
-            }]
+    } catch (error) {
+        console.error('❌ Erro ao aguardar renderização:', error);
+        res.status(500).json({
+            success: false,
+            message: "Erro interno do servidor",
+            error: error.message
         });
     }
+});
 
-    return timeline;
-}
+/**
+ * GET /shotstack/health
+ * Verifica se a API do Shotstack está acessível
+ */
+router.get("/shotstack/health", async (req, res) => {
+    try {
+        // Tenta fazer uma verificação de status com um ID fake para testar conectividade
+        const testResult = await checkRenderStatus('test-connectivity');
+        
+        // Se chegou até aqui, a API está acessível (mesmo que retorne erro para ID inválido)
+        res.json({
+            success: true,
+            message: "Shotstack API está acessível",
+            timestamp: new Date().toISOString()
+        });
 
-function createImageGalleryTemplate(data) {
-    const { images, duration = 2, transition = "slideLeft" } = data;
-    
-    return {
-        tracks: [{
-            clips: images.map((img, index) => ({
-                asset: {
-                    type: "image",
-                    src: img
-                },
-                start: index * duration,
-                length: duration,
-                effect: transition
-            }))
-        }]
-    };
-}
-
-function createPromotionalVideoTemplate(data) {
-    const { images, title, subtitle, soundtrack, duration = 5 } = data;
-    
-    const timeline = {
-        tracks: [
-            {
-                clips: images.map((img, index) => ({
-                    asset: {
-                        type: "image",
-                        src: img
-                    },
-                    start: index * duration,
-                    length: duration,
-                    effect: "zoomIn"
-                }))
-            }
-        ]
-    };
-
-    // Adicionar trilha sonora
-    if (soundtrack) {
-        timeline.soundtrack = {
-            src: soundtrack,
-            effect: "fadeIn"
-        };
-    }
-
-    // Adicionar textos
-    if (title) {
-        timeline.tracks.push({
-            clips: [{
-                asset: {
-                    type: "title",
-                    text: title,
-                    style: "future",
-                    color: "#ffffff",
-                    size: "large"
-                },
-                start: 0,
-                length: 3,
-                position: "center"
-            }]
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: "Erro de conectividade com Shotstack API",
+            error: error.message,
+            timestamp: new Date().toISOString()
         });
     }
-
-    if (subtitle) {
-        timeline.tracks.push({
-            clips: [{
-                asset: {
-                    type: "title",
-                    text: subtitle,
-                    style: "minimal",
-                    color: "#cccccc",
-                    size: "medium"
-                },
-                start: 1,
-                length: 4,
-                position: "bottom"
-            }]
-        });
-    }
-
-    return timeline;
-}
+});
 
 export default router;
