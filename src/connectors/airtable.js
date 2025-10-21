@@ -136,9 +136,9 @@ export async function updateImageSuggestionsFields(suggestionIds, status = "Appr
 }
 
 /**
- * Função específica para transferir sugestões aprovadas do Feed para tabela Images copy (Rota 3)
+ * Função específica para transferir sugestões aprovadas do Feed para tabela Images (Rota 3)
  * Converte 1 registro de Image suggestions (múltiplas imagens) 
- * em N registros individuais na tabela Images copy
+ * em N registros individuais na tabela Images
  * @param {Object} suggestionData - Dados da sugestão aprovada
  * @param {string} customEmail - Email do usuário
  * @param {string} customClientId - ID do cliente
@@ -168,6 +168,36 @@ export async function transferApprovedSuggestionToImages(
         return [{ status: 'error', error: 'Nenhuma URL de imagem válida', imgUrl: null }];
     }
     
+    // 🔍 Função para validar se um ID pertence à tabela correta para evitar erros de relacionamento
+    const validateRelationshipId = async (recordId, fieldName, tableName) => {
+        try {
+            // IDs conhecidos que causam problemas específicos
+            const knownProblematicIds = {
+                'recVQHMKjiU0zz8RD': {
+                    field: 'invoice',
+                    issue: 'Pertence à tabela errada para o campo invoice',
+                    solution: 'Remover do campo invoice'
+                }
+            };
+            
+            if (knownProblematicIds[recordId]) {
+                const problem = knownProblematicIds[recordId];
+                if (problem.field === fieldName) {
+                    console.log(`🚨 [validateRelationshipId] ID problemático detectado: ${recordId}`);
+                    console.log(`  - Campo: ${fieldName}`);
+                    console.log(`  - Problema: ${problem.issue}`);
+                    console.log(`  - Solução: ${problem.solution}`);
+                    return false; // ID não é válido para este campo
+                }
+            }
+            
+            return true; // ID parece válido
+            
+        } catch (error) {
+            console.log(`⚠️ [validateRelationshipId] Erro ao validar ${recordId}: ${error.message}`);
+            return false; // Em caso de erro, considerar inválido por segurança
+        }
+    };
     
     // Função para validar campos
     const getSelectValue = (value) => {
@@ -187,24 +217,65 @@ export async function transferApprovedSuggestionToImages(
             const fields = {
                 property_code: suggestionData.codigo || '',
                 input_img: [{ url: imageUrl }], // UMA imagem por registro - nome correto do campo
-                user_email: customEmail || '',
-                request_text: suggestionData.observacoes || '',
+                request_log: suggestionData.observacoes || '', // Campo correto: request_log (não request_text)
             };
+            
+            // Adicionar property_URL se disponível  
+            if (suggestionData.propertyUrl) {
+                fields.property_URL = suggestionData.propertyUrl;
+            }
             
             console.log("🔗 [transferApprovedSuggestionToImages] Adicionando relacionamentos...");
             
-            // Relacionamentos - usando nomes corretos dos campos para tabela Images copy
-            if (customClientId) {
-                fields.client = [customClientId]; // Array para relacionamento
-                console.log("  - client:", customClientId);
+            // Relacionamentos - usando nomes corretos dos campos para tabela Images - TODOS como arrays
+            console.log("🔍 [DEBUG] Validando IDs de relacionamento antes de adicionar...");
+            
+            if (customClientId && customClientId.trim() !== '') {
+                console.log(`🔍 [DEBUG] Validando customClientId: ${customClientId}`);
+                console.log(`  - Formato válido: ${customClientId.startsWith('rec') && customClientId.length >= 17}`);
+                console.log(`  - Será usado no campo 'client' da tabela 'Images'`);
+                
+                // 🔍 Validar se o ID pertence à tabela correta
+                const isValidClientId = await validateRelationshipId(customClientId, 'client', 'Images');
+                
+                if (isValidClientId) {
+                    fields.client = [customClientId]; // Array para relacionamento
+                    console.log("  - 🔗 client:", customClientId);
+                } else {
+                    console.log(`  - ❌ ID ${customClientId} não é válido para o campo client - REMOVIDO`);
+                }
             }
-            if (customInvoiceId) {
-                fields.invoice = customInvoiceId; // String para invoice
-                console.log("  - invoice:", customInvoiceId);
+            
+            if (customInvoiceId && customInvoiceId.trim() !== '') {
+                console.log(`🔍 [DEBUG] Validando customInvoiceId: ${customInvoiceId}`);
+                console.log(`  - Formato válido: ${customInvoiceId.startsWith('rec') && customInvoiceId.length >= 17}`);
+                console.log(`  - Será usado no campo 'invoice' da tabela 'Images'`);
+                
+                // 🔍 Validar se o ID pertence à tabela correta
+                const isValidInvoiceId = await validateRelationshipId(customInvoiceId, 'invoice', 'Images');
+                
+                if (isValidInvoiceId) {
+                    fields.invoice = [customInvoiceId]; // Array para relacionamento invoice
+                    console.log("  - 🎫 invoice:", customInvoiceId);
+                } else {
+                    console.log(`  - ❌ ID ${customInvoiceId} não é válido para o campo invoice - REMOVIDO`);
+                }
             }
-            if (customUserId) {
-                fields.user = [customUserId]; // Array para relacionamento
-                console.log("  - user:", customUserId);
+            
+            if (customUserId && customUserId.trim() !== '') {
+                console.log(`🔍 [DEBUG] Validando customUserId: ${customUserId}`);
+                console.log(`  - Formato válido: ${customUserId.startsWith('rec') && customUserId.length >= 17}`);
+                console.log(`  - Será usado no campo 'user' da tabela 'Images'`);
+                
+                // 🔍 Validar se o ID pertence à tabela correta
+                const isValidUserId = await validateRelationshipId(customUserId, 'user', 'Images');
+                
+                if (isValidUserId) {
+                    fields.user = [customUserId]; // Array para relacionamento
+                    console.log("  - 👤 user:", customUserId);
+                } else {
+                    console.log(`  - ❌ ID ${customUserId} não é válido para o campo user - REMOVIDO`);
+                }
             }
             
             // Style ref se houver imagensReferencia
@@ -213,7 +284,7 @@ export async function transferApprovedSuggestionToImages(
                 fields["style_ref"] = [{ url: encodedUrl }];
             }
             
-            // Campos opcionais - usando nomes corretos para tabela Images copy
+            // Campos opcionais - usando nomes corretos para tabela Images
             const decluttering = getSelectValue(suggestionData.retirar);
             if (decluttering) fields["decluttering"] = decluttering;
             
@@ -233,11 +304,12 @@ export async function transferApprovedSuggestionToImages(
             if (imageWorkflow) fields["workflow"] = imageWorkflow;
             
             const suggestionstatus = getSelectValue(suggestionData.suggestionstatus);
-            if (suggestionstatus) fields["Suggestion Status"] = suggestionstatus;
+            if (suggestionstatus) fields["status"] = suggestionstatus; // Campo correto: status (não Suggestion Status)
             
             // Estilo (relacionamento) - nome correto do campo
             const estilo = getSelectValue(suggestionData.estilo);
             if (estilo) {
+                console.log("🎨 [transferApprovedSuggestionToImages] Processando estilo:", estilo);
                 try {
                     const styleRecords = await baseInstance("Styles").select({
                         filterByFormula: `{Style Name} = '${estilo}'`,
@@ -245,39 +317,138 @@ export async function transferApprovedSuggestionToImages(
                     }).firstPage();
                     
                     if (styleRecords.length > 0) {
-                        fields["style"] = [styleRecords[0].id]; // Array para relacionamento
+                        const styleId = styleRecords[0].id;
+                        console.log(`🔍 [DEBUG] Validando styleId: ${styleId}`);
+                        console.log(`  - Formato válido: ${styleId.startsWith('rec') && styleId.length >= 17}`);
+                        console.log(`  - Será usado no campo 'style' da tabela 'Images'`);
+                        fields["style"] = [styleId]; // Array para relacionamento
+                        console.log("  - ✅ Estilo encontrado, ID:", styleId);
+                    } else {
+                        console.log("  - Estilo não encontrado na tabela Styles");
                     }
                 } catch (styleError) {
+                    console.log("  - Erro ao buscar estilo:", styleError.message);
                 }
             }
             
-            // Destaques
+            // Observação: Campos como Destaques, Endereço e Preço não existem na tabela Images
+            // Estas informações podem ser incluídas no request_log se necessário
             let destaques = suggestionData.destaques;
-            if (Array.isArray(destaques) && destaques.length > 0) {
-                fields["Destaques"] = destaques.filter(d => typeof d === "string" && d.trim() !== "");
-            } else if (typeof destaques === "string" && destaques.trim() !== "") {
-                fields["Destaques"] = [destaques.trim()];
+            let endereco = getSelectValue(suggestionData.endereco);
+            let preco = getSelectValue(suggestionData.preco);
+            
+            if (destaques || endereco || preco) {
+                let additionalInfo = [];
+                
+                if (Array.isArray(destaques) && destaques.length > 0) {
+                    additionalInfo.push(`Destaques: ${destaques.filter(d => typeof d === "string" && d.trim() !== "").join(", ")}`);
+                } else if (typeof destaques === "string" && destaques.trim() !== "") {
+                    additionalInfo.push(`Destaques: ${destaques.trim()}`);
+                }
+                
+                if (endereco) {
+                    additionalInfo.push(`Endereço: ${endereco}`);
+                }
+                
+                if (preco) {
+                    const precoNumber = Number(
+                        preco.toString()
+                            .replace(/\./g, '')
+                            .replace(',', '.')
+                            .replace(/[^\d.-]/g, '')
+                    );
+                    if (!isNaN(precoNumber)) {
+                        additionalInfo.push(`Preço: R$ ${precoNumber.toLocaleString('pt-BR')}`);
+                    }
+                }
+                
+                if (additionalInfo.length > 0) {
+                    const currentLog = fields.request_log || '';
+                    fields.request_log = currentLog + (currentLog ? '\n\n' : '') + additionalInfo.join('\n');
+                }
             }
             
-            const endereco = getSelectValue(suggestionData.endereco);
-            if (endereco) fields["Endereço"] = endereco;
+            // VALIDAÇÃO PREVENTIVA FINAL DOS CAMPOS
+            console.log("🛡️ [transferApprovedSuggestionToImages] Validação preventiva dos campos...");
+            const problematicFields = [];
             
-            const preco = getSelectValue(suggestionData.preco);
-            if (preco) {
-                const precoNumber = Number(
-                    preco.toString()
-                        .replace(/\./g, '')
-                        .replace(',', '.')
-                        .replace(/[^\d.-]/g, '')
-                );
-                if (!isNaN(precoNumber)) {
-                    fields["Preço"] = precoNumber;
+            for (const [fieldName, fieldValue] of Object.entries(fields)) {
+                // Verificar campo input_img especificamente
+                if (fieldName === 'input_img') {
+                    console.log(`  - ${fieldName}: ${Array.isArray(fieldValue) ? 'array' : typeof fieldValue} - ${JSON.stringify(fieldValue)}`);
+                    
+                    if (Array.isArray(fieldValue) && fieldValue.length > 0) {
+                        const attachment = fieldValue[0];
+                        if (attachment && attachment.url) {
+                            console.log(`    - URL attachment: ${attachment.url}`);
+                            
+                            // Verificar se a URL é válida
+                            try {
+                                new URL(attachment.url);
+                                console.log(`    - ✅ URL válida`);
+                            } catch (urlError) {
+                                console.error(`    - ❌ URL inválida: ${urlError.message}`);
+                                problematicFields.push(`${fieldName} contém URL inválida: ${attachment.url}`);
+                            }
+                        } else {
+                            console.error(`    - ❌ Attachment sem URL válida`);
+                            problematicFields.push(`${fieldName} contém attachment sem URL`);
+                        }
+                    } else {
+                        console.error(`    - ❌ input_img não é um array válido`);
+                        problematicFields.push(`${fieldName} deveria ser array com attachments`);
+                    }
+                }
+                
+                // Verificar campos que são sempre relacionamentos (arrays)
+                else if (['client', 'user', 'style'].includes(fieldName)) {
+                    const isArray = Array.isArray(fieldValue);
+                    console.log(`  - ${fieldName}: ${isArray ? 'array' : typeof fieldValue} - ${JSON.stringify(fieldValue)}`);
+                    
+                    if (!isArray) {
+                        problematicFields.push(`${fieldName} deveria ser array mas é ${typeof fieldValue}`);
+                    }
+                }
+                
+                // Verificar campos que são arrays para relacionamento
+                else if (['invoice'].includes(fieldName)) {
+                    const isArray = Array.isArray(fieldValue);
+                    console.log(`  - ${fieldName}: ${isArray ? 'array' : typeof fieldValue} - ${JSON.stringify(fieldValue)}`);
+                    
+                    if (!isArray) {
+                        problematicFields.push(`${fieldName} deveria ser array mas é ${typeof fieldValue}`);
+                    }
+                }
+            }
+            
+            if (problematicFields.length > 0) {
+                console.error("🚨 [transferApprovedSuggestionToImages] CAMPOS PROBLEMÁTICOS DETECTADOS:");
+                problematicFields.forEach(problem => console.error(`  - ❌ ${problem}`));
+            }
+            
+            // 🔍 DEBUG: Log detalhado dos relacionamentos antes de criar
+            console.log("🔍 [DEBUG] Resumo dos relacionamentos que serão enviados:");
+            const relationshipFields = ['client', 'invoice', 'user', 'style'];
+            for (const fieldName of relationshipFields) {
+                if (fields[fieldName]) {
+                    const fieldValue = fields[fieldName];
+                    console.log(`  - ${fieldName}: ${JSON.stringify(fieldValue)}`);
+                    if (Array.isArray(fieldValue) && fieldValue.length > 0) {
+                        console.log(`    - Primeiro ID: ${fieldValue[0]}`);
+                        console.log(`    - Tabela destino: Images`);
+                        if (fieldValue[0] === 'recVQHMKjiU0zz8RD') {
+                            console.log(`    - 🚨 ATENÇÃO: Este é o ID que causou o erro! Campo: ${fieldName}`);
+                        }
+                    }
                 }
             }
             
             
-            // Criar registro individual na tabela Images copy
-            const result = await baseInstance("Images copy").create(fields);
+            // Criar registro individual na tabela Images
+            console.log("💾 [transferApprovedSuggestionToImages] Criando registro...");
+            console.log("📋 [transferApprovedSuggestionToImages] Campos que serão enviados:", Object.keys(fields));
+            
+            const result = await baseInstance("Images").create(fields);
             
             console.log(`✅ [transferApprovedSuggestionToImages] Registro criado: ${result.id}`);
             
@@ -290,6 +461,61 @@ export async function transferApprovedSuggestionToImages(
             
         } catch (error) {
             console.log(`❌ [transferApprovedSuggestionToImages] Erro na imagem ${i + 1}: ${error.message}`);
+            console.error("🔍 [transferApprovedSuggestionToImages] Erro completo:", error);
+            console.error("🔍 [transferApprovedSuggestionToImages] Erro nome:", error.name);
+            console.error("🔍 [transferApprovedSuggestionToImages] Erro detalhes:", error.error);
+            
+            // 🔍 DEBUG: Análise específica do erro ROW_TABLE_DOES_NOT_MATCH_LINKED_TABLE
+            if (error.message.includes('ROW_TABLE_DOES_NOT_MATCH_LINKED_TABLE') || error.error === 'ROW_TABLE_DOES_NOT_MATCH_LINKED_TABLE') {
+                console.error("🚨 [transferApprovedSuggestionToImages] ERRO DE RELACIONAMENTO DETECTADO!");
+                console.error("🔍 [transferApprovedSuggestionToImages] Este erro indica que um ID está sendo usado no campo errado");
+                console.error("📊 [transferApprovedSuggestionToImages] Analisando campos de relacionamento enviados...");
+                
+                console.error("📋 [transferApprovedSuggestionToImages] Campos de relacionamento encontrados:");
+                const relationshipFields = ['client', 'invoice', 'user', 'style'];
+                
+                for (const fieldName of relationshipFields) {
+                    if (fields[fieldName]) {
+                        const fieldValue = fields[fieldName];
+                        console.error(`  - ${fieldName}: ${JSON.stringify(fieldValue)}`);
+                        
+                        if (Array.isArray(fieldValue) && fieldValue.length > 0) {
+                            const recordId = fieldValue[0];
+                            console.error(`    - Record ID: ${recordId}`);
+                            console.error(`    - Formato válido: ${recordId.startsWith('rec') && recordId.length >= 17}`);
+                            
+                            // Identificar o ID específico que está causando o erro
+                            if (error.message.includes(recordId)) {
+                                console.error(`    - 🎯 ENCONTRADO! Este é o ID que está causando o erro!`);
+                                console.error(`    - Campo problemático: ${fieldName}`);
+                                console.error(`    - ID problemático: ${recordId}`);
+                                console.error(`    - Tabela destino: Images`);
+                            }
+                        }
+                    }
+                }
+            }
+            
+            // Verificar se é erro de validação de campo
+            if (error.message.includes('Value is not an array of record IDs')) {
+                console.error("🚨 [transferApprovedSuggestionToImages] ERRO DE VALIDAÇÃO DE CAMPO DETECTADO!");
+                console.error("🔍 [transferApprovedSuggestionToImages] Analisando campos enviados...");
+                console.error("📊 [transferApprovedSuggestionToImages] Total de campos:", Object.keys(fields).length);
+                
+                for (const [fieldName, fieldValue] of Object.entries(fields)) {
+                    const isArray = Array.isArray(fieldValue);
+                    const valueType = isArray ? 'array' : typeof fieldValue;
+                    console.error(`  - ${fieldName}: ${valueType} = ${JSON.stringify(fieldValue)}`);
+                    
+                    // Identificar possíveis culpados
+                    if (isArray && fieldValue.length > 0 && typeof fieldValue[0] === 'string') {
+                        console.error(`    ⚠️  SUSPEITO: ${fieldName} é array de strings - pode ser campo de relationship`);
+                    }
+                }
+            }
+            
+            console.log("🔍 [transferApprovedSuggestionToImages] Stack trace:", error.stack);
+            
             results.push({ 
                 index: i, 
                 status: 'error', 
@@ -330,7 +556,7 @@ export async function upsetImagesInAirtable(
     processMode = null
 ) {
     
-    const tableName = imageTable || "Images copy";
+    const tableName = imageTable || "Images";
     
     // Log de identificação da origem da requisição
     
@@ -367,6 +593,37 @@ export async function upsetImagesInAirtable(
         if (!value) return null;
         const cleanValue = value.toString().replace(/^"+|"+$/g, '').trim();
         return cleanValue !== '' ? cleanValue : null;
+    };
+    
+    // 🔍 Função para validar se um ID pertence à tabela correta para evitar erros de relacionamento
+    const validateRelationshipId = async (recordId, fieldName, tableName) => {
+        try {
+            // IDs conhecidos que causam problemas específicos
+            const knownProblematicIds = {
+                'recVQHMKjiU0zz8RD': {
+                    field: 'invoice',
+                    issue: 'Pertence à tabela errada para o campo invoice',
+                    solution: 'Remover do campo invoice'
+                }
+            };
+            
+            if (knownProblematicIds[recordId]) {
+                const problem = knownProblematicIds[recordId];
+                if (problem.field === fieldName) {
+                    console.log(`🚨 [validateRelationshipId] ID problemático detectado: ${recordId}`);
+                    console.log(`  - Campo: ${fieldName}`);
+                    console.log(`  - Problema: ${problem.issue}`);
+                    console.log(`  - Solução: ${problem.solution}`);
+                    return false; // ID não é válido para este campo
+                }
+            }
+            
+            return true; // ID parece válido
+            
+        } catch (error) {
+            console.log(`⚠️ [validateRelationshipId] Erro ao validar ${recordId}: ${error.message}`);
+            return false; // Em caso de erro, considerar inválido por segurança
+        }
     };
     
     // NOVO: Lógica diferente baseada na tabela de destino
@@ -596,26 +853,40 @@ export async function upsetImagesInAirtable(
                 fields = {
                     property_code: img.codigo || '',
                     input_img: [{ url: imageUrl }], // Nome correto do campo
-                    user_email: email,
-                    request_text: img.observacoes || '',
+                    request_log: img.observacoes || '', // Campo correto: request_log
                 };
                 
-                // Adicionar metadados de origem nos campos se for suggestion feed
+                // Adicionar property_URL se disponível  
+                if (img.propertyUrl) {
+                    fields.property_URL = img.propertyUrl;
+                }
+                
+                // Metadados de suggestion feed podem ser incluídos no request_log se necessário
                 if (isSuggestionFeedApproval) {
-                    fields["Processing Source"] = "suggestion-feed-approval";
-                    fields["Created From"] = "feed-approval";
-                    
-                    // Adicionar timestamp específico
-                    fields["Approved At"] = new Date().toISOString();
+                    const currentLog = fields.request_log || '';
+                    fields.request_log = currentLog + (currentLog ? '\n' : '') + `[Aprovado via suggestion feed em ${new Date().toISOString()}]`;
                 }
 
                  // Usar a tabela especificada no parâmetro, não forçar "Images"
                 const actualTableName = tableName;
                 
-                // Relacionamentos condicionais - TODOS como arrays para Images copy
+                // Relacionamentos condicionais - TODOS como arrays para Images
+                console.log("🔍 [DEBUG] Validando IDs de relacionamento antes de adicionar...");
+                
                 if (clientId && clientId.trim() !== '') {
-                    fields.client = [clientId]; // Array para relacionamento
-                    console.log("  - 🔗 Campo client adicionado como array:", [clientId]);
+                    console.log(`🔍 [DEBUG] Validando clientId: ${clientId}`);
+                    console.log(`  - Formato válido: ${clientId.startsWith('rec') && clientId.length >= 17}`);
+                    console.log(`  - Será usado no campo 'client' da tabela '${actualTableName}'`);
+                    
+                    // 🔍 Validar se o ID pertence à tabela correta
+                    const isValidClientId = await validateRelationshipId(clientId, 'client', actualTableName);
+                    
+                    if (isValidClientId) {
+                        fields.client = [clientId]; // Array para relacionamento
+                        console.log("  - 🔗 Campo client adicionado como array:", [clientId]);
+                    } else {
+                        console.log(`  - ❌ ID ${clientId} não é válido para o campo client - REMOVIDO`);
+                    }
                 }
                 
                 // Aplicar campos específicos baseados na tabela de destino
@@ -623,14 +894,36 @@ export async function upsetImagesInAirtable(
                 console.log("  - 🎫 invoiceId:", invoiceId);
                 console.log("  - 👤 userId:", userId);
                 
-                // Para tabela Images copy - invoice é string, user é array
+                // Para tabela Images - TODOS os relacionamentos são arrays
                 if (invoiceId && invoiceId.trim() !== '') {
-                    fields.invoice = invoiceId; // String para invoice
-                    console.log("    - 💰 Campo invoice adicionado como string:", invoiceId);
+                    console.log(`🔍 [DEBUG] Validando invoiceId: ${invoiceId}`);
+                    console.log(`  - Formato válido: ${invoiceId.startsWith('rec') && invoiceId.length >= 17}`);
+                    console.log(`  - Será usado no campo 'invoice' da tabela '${actualTableName}'`);
+                    
+                    // � Validar se o ID pertence à tabela correta
+                    const isValidInvoiceId = await validateRelationshipId(invoiceId, 'invoice', actualTableName);
+                    
+                    if (isValidInvoiceId) {
+                        fields.invoice = [invoiceId]; // Array para relacionamento invoice
+                        console.log("    - � Campo invoice adicionado como array:", [invoiceId]);
+                    } else {
+                        console.log(`    - ❌ ID ${invoiceId} não é válido para o campo invoice - REMOVIDO`);
+                    }
                 }
                 if (userId && userId.trim() !== '') {
-                    fields.user = [userId]; // Array para user (relacionamento)
-                    console.log("    - � Campo user adicionado como array:", [userId]);
+                    console.log(`🔍 [DEBUG] Validando userId: ${userId}`);
+                    console.log(`  - Formato válido: ${userId.startsWith('rec') && userId.length >= 17}`);
+                    console.log(`  - Será usado no campo 'user' da tabela '${actualTableName}'`);
+                    
+                    // 🔍 Validar se o ID pertence à tabela correta
+                    const isValidUserId = await validateRelationshipId(userId, 'user', actualTableName);
+                    
+                    if (isValidUserId) {
+                        fields.user = [userId]; // Array para relacionamento user
+                        console.log("    - 👤 Campo user adicionado como array:", [userId]);
+                    } else {
+                        console.log(`    - ❌ ID ${userId} não é válido para o campo user - REMOVIDO`);
+                    }
                 }
                 
                 if (encodedUrl) {
@@ -682,8 +975,12 @@ export async function upsetImagesInAirtable(
                         }).firstPage();
                         
                         if (styleRecords.length > 0) {
-                            fields["style"] = [styleRecords[0].id]; // Array para relacionamento
-                            console.log("    - ✅ Estilo encontrado, ID:", styleRecords[0].id);
+                            const styleId = styleRecords[0].id;
+                            console.log(`🔍 [DEBUG] Validando styleId: ${styleId}`);
+                            console.log(`  - Formato válido: ${styleId.startsWith('rec') && styleId.length >= 17}`);
+                            console.log(`  - Será usado no campo 'style' da tabela '${actualTableName}'`);
+                            fields["style"] = [styleId]; // Array para relacionamento
+                            console.log("    - ✅ Estilo encontrado, ID:", styleId);
                         } else {
                             console.log("    - Estilo não encontrado na tabela Styles");
                         }
@@ -700,40 +997,12 @@ export async function upsetImagesInAirtable(
                 
                 const suggestionstatus = getSelectValue(img.suggestionstatus);
                 if (suggestionstatus) {
-                    fields["Suggestion Status"] = suggestionstatus;
-                    console.log("    - Suggestion Status:", suggestionstatus);
+                    fields["status"] = suggestionstatus; // Campo correto: status
+                    console.log("    - status:", suggestionstatus);
                 }
                 
-                // Destaques
-                let destaques = img.destaques;
-                console.log("  - ✨ Processando destaques:", { type: typeof destaques, value: destaques });
-                if (Array.isArray(destaques) && destaques.length > 0) {
-                    fields["Destaques"] = destaques.filter(d => typeof d === "string" && d.trim() !== "");
-                    console.log("    - Destaques (array):", fields["Destaques"]);
-                } else if (typeof destaques === "string" && destaques.trim() !== "") {
-                    fields["Destaques"] = [destaques.trim()];
-                    console.log("    - Destaques (string):", fields["Destaques"]);
-                }
-                
-                const endereco = getSelectValue(img.endereco);
-                if (endereco) {
-                    fields["Endereço"] = endereco;
-                    console.log("    - Endereço:", endereco);
-                }
-                
-                const preco = getSelectValue(img.preco);
-                if (preco) {
-                    const precoNumber = Number(
-                        preco.toString()
-                            .replace(/\./g, '')
-                            .replace(',', '.')
-                            .replace(/[^\d.-]/g, '')
-                    );
-                    if (!isNaN(precoNumber)) {
-                        fields["Preço"] = precoNumber;
-                        console.log("    - Preço:", precoNumber);
-                    }
-                }
+                // Observação: Campos como Destaques, Endereço e Preço não existem na tabela Images
+                // Estas informações podem ser incluídas no request_log se necessário
                 
                 // Log mais específico
                 if (isSuggestionFeedApproval) {
@@ -819,29 +1088,43 @@ export async function upsetImagesInAirtable(
                         console.log(`      ⚠️  Campo vazio detectado: ${fieldName}`);
                     }
                     
-                    // Verificar se é um campo que deveria ser array mas não é
-                    if (['client', 'invoice', 'user'].includes(fieldName) && actualTableName !== "Images copy" && !Array.isArray(fieldValue)) {
-                        console.log(`      ⚠️  ATENÇÃO: Campo ${fieldName} deveria ser array para tabela ${actualTableName}`);
-                    }
-                    
-                    // Verificar se é um campo que deveria ser string mas é array
-                    if (['client', 'invoice', 'user'].includes(fieldName) && actualTableName === "Images copy" && Array.isArray(fieldValue)) {
-                        console.log(`      ⚠️  ATENÇÃO: Campo ${fieldName} deveria ser string para tabela ${actualTableName}`);
+                    // Verificar se é um campo que deveria ser array mas não é (relacionamentos)
+                    if (['client', 'invoice', 'user'].includes(fieldName) && !Array.isArray(fieldValue)) {
+                        console.log(`      ⚠️  ATENÇÃO: Campo ${fieldName} deveria ser array (relacionamento) mas é ${typeof fieldValue}`);
                     }
                     
                     // Verificar campos de relacionamento obrigatórios como arrays vazios
-                    if (['style', 'Invoices', 'Users'].includes(fieldName) && Array.isArray(fieldValue) && fieldValue.length === 0) {
+                    if (['client', 'invoice', 'user', 'style'].includes(fieldName) && Array.isArray(fieldValue) && fieldValue.length === 0) {
                         console.log(`      ⚠️  Campo relacionamento vazio: ${fieldName}`);
                     }
                 }
                 
                 console.log("  - 🔍 Campos detalhados:", JSON.stringify(fields, null, 2));
                 
+                // 🔍 DEBUG: Log detalhado dos relacionamentos antes de criar/atualizar
+                console.log("🔍 [DEBUG] Resumo dos relacionamentos que serão enviados:");
+                const relationshipFields = ['client', 'invoice', 'user', 'style'];
+                for (const fieldName of relationshipFields) {
+                    if (fields[fieldName]) {
+                        const fieldValue = fields[fieldName];
+                        console.log(`  - ${fieldName}: ${JSON.stringify(fieldValue)}`);
+                        if (Array.isArray(fieldValue) && fieldValue.length > 0) {
+                            console.log(`    - Primeiro ID: ${fieldValue[0]}`);
+                            console.log(`    - Tabela destino: ${actualTableName}`);
+                            if (fieldValue[0] === 'recVQHMKjiU0zz8RD') {
+                                console.log(`    - 🚨 ATENÇÃO: Este é o ID que causou o erro! Campo: ${fieldName}`);
+                            }
+                        }
+                    }
+                }
+                
                 if (records.length > 0) {
+                    console.log("🔍 [DEBUG] Tentando ATUALIZAR registro...");
                     result = await baseInstance(actualTableName).update(records[0].id, fields);
                     console.log("  - ✅ Registro atualizado:", records[0].id);
                     results.push({ index: i, status: 'updated', id: records[0].id, imgUrl: imageUrl });
                 } else {
+                    console.log("🔍 [DEBUG] Tentando CRIAR novo registro...");
                     result = await baseInstance(actualTableName).create(fields);
                     console.log("  - ✅ Registro criado:", result.id);
                     if (isSuggestionFeedApproval) {
@@ -857,6 +1140,39 @@ export async function upsetImagesInAirtable(
                 console.error("    - 🔍 Erro completo:", error);
                 console.error("    - 🔍 Erro nome:", error.name);
                 console.error("    - 🔍 Erro detalhes:", error.error);
+                
+                // 🔍 DEBUG: Análise específica do erro ROW_TABLE_DOES_NOT_MATCH_LINKED_TABLE
+                if (error.message.includes('ROW_TABLE_DOES_NOT_MATCH_LINKED_TABLE') || error.error === 'ROW_TABLE_DOES_NOT_MATCH_LINKED_TABLE') {
+                    console.error("    - 🚨 ERRO DE RELACIONAMENTO DETECTADO!");
+                    console.error("    - 🔍 Este erro indica que um ID está sendo usado no campo errado");
+                    console.error("    - 📊 Analisando campos de relacionamento enviados...");
+                    
+                    if (fields !== null) {
+                        console.error("    - 📋 Campos de relacionamento encontrados:");
+                        const relationshipFields = ['client', 'invoice', 'user', 'style'];
+                        
+                        for (const fieldName of relationshipFields) {
+                            if (fields[fieldName]) {
+                                const fieldValue = fields[fieldName];
+                                console.error(`      - ${fieldName}: ${JSON.stringify(fieldValue)}`);
+                                
+                                if (Array.isArray(fieldValue) && fieldValue.length > 0) {
+                                    const recordId = fieldValue[0];
+                                    console.error(`        - Record ID: ${recordId}`);
+                                    console.error(`        - Formato válido: ${recordId.startsWith('rec') && recordId.length >= 17}`);
+                                    
+                                    // Identificar o ID específico que está causando o erro
+                                    if (error.message.includes(recordId)) {
+                                        console.error(`        - 🎯 ENCONTRADO! Este é o ID que está causando o erro!`);
+                                        console.error(`        - Campo problemático: ${fieldName}`);
+                                        console.error(`        - ID problemático: ${recordId}`);
+                                        console.error(`        - Tabela destino: ${tableName}`);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
                 
                 // Verificar se é erro de validação de campo
                 if (error.message.includes('Value is not an array of record IDs')) {
@@ -918,19 +1234,55 @@ export async function syncImoveisWithAirtable(imoveisFromXml) {
     const baseInstance = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(process.env.AIRTABLE_BASE_ID);
     const client = "Tamiles Bortoletto"
 
+    console.log("🔄 [syncImoveisWithAirtable] Iniciando sincronização...");
+    console.log(`📊 [syncImoveisWithAirtable] Total de imóveis do XML: ${imoveisFromXml.length}`);
+
     // Busca todos os imóveis atuais do Airtable
     const airtableRecords = await baseInstance(tableName).select({}).all();
     const airtableMap = {};
+    const duplicatesInAirtable = []; // Para rastrear duplicatas no Airtable
+    
+    console.log(`📊 [syncImoveisWithAirtable] Total de registros no Airtable: ${airtableRecords.length}`);
+    
+    // Identificar e mapear registros existentes (incluindo duplicatas)
     airtableRecords.forEach(record => {
-        airtableMap[record.fields.Codigo] = { id: record.id, fields: record.fields };
+        const codigo = record.fields.code;  // ✅ CORRIGIDO: campo correto é 'code', não 'Codigo'
+        
+        if (airtableMap[codigo]) {
+            // Duplicata encontrada! Marcar para remoção
+            console.log(`🔍 [syncImoveisWithAirtable] Duplicata encontrada para código: ${codigo}`);
+            duplicatesInAirtable.push({
+                id: record.id,
+                codigo: codigo,
+                reason: 'Duplicata no Airtable'
+            });
+        } else {
+            // Primeira ocorrência deste código
+            airtableMap[codigo] = { id: record.id, fields: record.fields };
+        }
     });
 
-    // Cria um Set com todos os códigos do XML
-    const xmlCodigos = new Set(imoveisFromXml.map(imovel => {
-        return imovel.CodigoImovel || imovel.codigo || imovel.ListingID;
-    }));
+    console.log(`⚠️ [syncImoveisWithAirtable] Duplicatas encontradas no Airtable: ${duplicatesInAirtable.length}`);
 
-    // Adiciona/Atualiza imóveis do XML
+    // 🧹 LIMPAR DUPLICATAS DO AIRTABLE
+    if (duplicatesInAirtable.length > 0) {
+        console.log("🧹 [syncImoveisWithAirtable] Removendo duplicatas do Airtable...");
+        
+        for (const duplicate of duplicatesInAirtable) {
+            try {
+                await baseInstance(tableName).destroy(duplicate.id);
+                console.log(`✅ [syncImoveisWithAirtable] Duplicata removida: ${duplicate.codigo} (${duplicate.id})`);
+            } catch (error) {
+                console.error(`❌ [syncImoveisWithAirtable] Erro ao remover duplicata ${duplicate.codigo}:`, error.message);
+            }
+        }
+    }
+
+    // Criar Set com códigos únicos do XML (remover duplicatas do XML também)
+    const xmlCodigosSet = new Set();
+    const imoveisUnicos = [];
+    const duplicatesInXml = [];
+
     for (const imovel of imoveisFromXml) {
         // Detectar o tipo de XML
         const isKenlo = !!imovel.CodigoImovel;
@@ -940,6 +1292,45 @@ export async function syncImoveisWithAirtable(imoveisFromXml) {
         const codigo = isKenlo ? imovel.CodigoImovel :
             isSiga ? imovel.ListingID :
                 imovel.codigo;
+
+        if (xmlCodigosSet.has(codigo)) {
+            // Duplicata no XML
+            duplicatesInXml.push({
+                codigo: codigo,
+                reason: 'Duplicata no XML'
+            });
+        } else {
+            xmlCodigosSet.add(codigo);
+            imoveisUnicos.push(imovel);
+        }
+    }
+
+    console.log(`⚠️ [syncImoveisWithAirtable] Duplicatas encontradas no XML: ${duplicatesInXml.length}`);
+    console.log(`📊 [syncImoveisWithAirtable] Imóveis únicos do XML: ${imoveisUnicos.length}`);
+
+    // 📝 CADASTRAR APENAS OS NOVOS (que não existem no Airtable)
+    let novosAdicionados = 0;
+    let jaExistentes = 0;
+
+    for (const imovel of imoveisUnicos) {
+        // Detectar o tipo de XML e definir código PRIMEIRO
+        const isKenlo = !!imovel.CodigoImovel;
+        const isSiga = !!imovel.ListingID;
+
+        // Define código com base no tipo de XML
+        const codigo = isKenlo ? imovel.CodigoImovel :
+            isSiga ? imovel.ListingID :
+                imovel.codigo;
+
+        // ✅ VERIFICAR SE JÁ EXISTE - SE EXISTIR, PULAR
+        if (airtableMap[codigo]) {
+            console.log(`ℹ️ [syncImoveisWithAirtable] Imóvel já existe, pulando: ${codigo}`);
+            jaExistentes++;
+            continue; // PULAR - NÃO ATUALIZAR
+        }
+
+        // 🆕 CADASTRAR APENAS OS NOVOS
+        console.log(`🆕 [syncImoveisWithAirtable] Adicionando novo imóvel: ${codigo}`);
 
         // Mapear os campos conforme o tipo de XML
         let tipo, finalidade, valor, bairro, cidade, uf, area_util,
@@ -963,29 +1354,22 @@ export async function syncImoveisWithAirtable(imoveisFromXml) {
             descricao = imovel.Title || imovel.Details?.Description || "";
             url_propriedade = imovel.ListingURL || "";
 
-            // Tratar fotos do SIGA (dentro do objeto Media)
+            // Tratar fotos do SIGA
             if (isSiga && imovel.Media && imovel.Media.Item) {
-
-                // Verificar se é um array ou item único
                 if (Array.isArray(imovel.Media.Item)) {
-                    // Extrair URLs das imagens do array 
                     fotos = imovel.Media.Item
-                        .filter(item => item.medium === "image") // Com mergeAttrs, o atributo está direto no objeto
-                        .map(item => item._) // O conteúdo está em _
+                        .filter(item => item.medium === "image")
+                        .map(item => item._)
                         .join('\n');
                 } else if (imovel.Media.Item.medium === "image") {
-                    // Caso seja apenas um item
                     fotos = imovel.Media.Item._;
                 }
 
-                // Verificar se conseguimos extrair fotos
                 if (!fotos) {
-                    // Tentativa alternativa - o conteúdo pode ser o próprio texto do item
                     try {
                         const mediaItems = Array.isArray(imovel.Media.Item) ?
                             imovel.Media.Item : [imovel.Media.Item];
 
-                        // Percorrer os items e extrair textos
                         const urls = [];
                         for (const item of mediaItems) {
                             if (typeof item === 'string') {
@@ -993,7 +1377,6 @@ export async function syncImoveisWithAirtable(imoveisFromXml) {
                             } else if (item._) {
                                 urls.push(item._);
                             } else if (item.primary === "true" || item.medium === "image") {
-                                // Tentativa de extrair com base em outros atributos
                                 const url = Object.values(item).find(val =>
                                     typeof val === 'string' &&
                                     val.startsWith('http')
@@ -1001,14 +1384,14 @@ export async function syncImoveisWithAirtable(imoveisFromXml) {
                                 if (url) urls.push(url);
                             }
                         }
-
                         fotos = urls.join('\n');
                     } catch (e) {
+                        console.error(`⚠️ [syncImoveisWithAirtable] Erro ao processar fotos SIGA: ${e.message}`);
                     }
                 }
             }
         } else if (isKenlo) {
-            // Mapeamento Kenlo (existente)
+            // Mapeamento Kenlo
             tipo = imovel.TipoImovel;
             finalidade = imovel.Finalidade;
             valor = imovel.PrecoVenda;
@@ -1031,7 +1414,7 @@ export async function syncImoveisWithAirtable(imoveisFromXml) {
                 }
             }
         } else {
-            // Mapeamento padrão (existente)
+            // Mapeamento padrão
             tipo = imovel.tipo;
             finalidade = imovel.finalidade;
             valor = imovel.valor;
@@ -1050,21 +1433,6 @@ export async function syncImoveisWithAirtable(imoveisFromXml) {
                 fotos = Array.isArray(imovel.fotos.foto)
                     ? imovel.fotos.foto.join('\n')
                     : imovel.fotos.foto;
-            }
-        }
-
-        // Tratar fotos especificamente para o SIGA - segunda tentativa
-        // O formato pode variar conforme a estrutura XML exata
-        if (isSiga && !fotos && imovel.Media) {
-            try {
-                const mediaItems = Array.isArray(imovel.Media.Item) ?
-                    imovel.Media.Item :
-                    [imovel.Media.Item];
-
-                fotos = mediaItems
-                    .filter(item => typeof item === 'string')
-                    .join('\n');
-            } catch (e) {
             }
         }
 
@@ -1092,61 +1460,486 @@ export async function syncImoveisWithAirtable(imoveisFromXml) {
             fields.URL_Propriedade = url_propriedade;
         }
 
-        if (!airtableMap[codigo]) {
-            // Adicionar novo imóvel
-            try {
-                await baseInstance(tableName).create(fields);
-            } catch (error) {
-                // Se erro for devido a campo desconhecido, tentar novamente sem campos problemáticos
-                if (error.message && error.message.includes('Unknown field name')) {
-                    
-                    // Remover URL_Propriedade e tentar novamente
-                    const fieldsWithoutUrl = { ...fields };
-                    delete fieldsWithoutUrl.URL_Propriedade;
-                    
-                    
-                    try {
-                        await baseInstance(tableName).create(fieldsWithoutUrl);
-                    } catch (retryError) {
-                        throw retryError;
-                    }
-                } else {
-                    throw error;
-                }
-            }
-        } else {
-            // Atualizar apenas se houver diferença
-            const currentFields = airtableMap[codigo].fields;
-            const hasDiff = Object.keys(fields).some(key => fields[key] != currentFields[key]);
-            if (hasDiff) {
+        // 🆕 CRIAR NOVO REGISTRO
+        try {
+            const result = await baseInstance(tableName).create(fields);
+            console.log(`✅ [syncImoveisWithAirtable] Novo imóvel criado: ${codigo} (${result.id})`);
+            novosAdicionados++;
+        } catch (error) {
+            // Se erro for devido a campo desconhecido, tentar novamente sem campos problemáticos
+            if (error.message && error.message.includes('Unknown field name')) {
+                console.log(`⚠️ [syncImoveisWithAirtable] Campo desconhecido, tentando sem URL_Propriedade: ${codigo}`);
+                
+                const fieldsWithoutUrl = { ...fields };
+                delete fieldsWithoutUrl.URL_Propriedade;
+                
                 try {
-                    await baseInstance(tableName).update(airtableMap[codigo].id, fields);
-                } catch (error) {
-                    // Se erro for devido a campo desconhecido, tentar novamente sem campos problemáticos
-                    if (error.message && error.message.includes('Unknown field name')) {
-                        
-                        // Remover URL_Propriedade e tentar novamente
-                        const fieldsWithoutUrl = { ...fields };
-                        delete fieldsWithoutUrl.URL_Propriedade;
-                        
-                        
-                        try {
-                            await baseInstance(tableName).update(airtableMap[codigo].id, fieldsWithoutUrl);
-                        } catch (retryError) {
-                            throw retryError;
-                        }
-                    } else {
-                        throw error;
-                    }
+                    const result = await baseInstance(tableName).create(fieldsWithoutUrl);
+                    console.log(`✅ [syncImoveisWithAirtable] Novo imóvel criado (sem URL): ${codigo} (${result.id})`);
+                    novosAdicionados++;
+                } catch (retryError) {
+                    console.error(`❌ [syncImoveisWithAirtable] Erro ao criar imóvel ${codigo}:`, retryError.message);
                 }
+            } else {
+                console.error(`❌ [syncImoveisWithAirtable] Erro ao criar imóvel ${codigo}:`, error.message);
             }
         }
     }
 
-    // Remover imóveis que estão no Airtable mas não estão mais no XML
+    // 🗑️ REMOVER REGISTROS QUE NÃO ESTÃO MAIS NO XML
+    let registrosRemovidos = 0;
+    console.log("🗑️ [syncImoveisWithAirtable] Verificando registros para remoção...");
+    
     for (const codigo in airtableMap) {
-        if (!xmlCodigos.has(codigo)) {
-            await baseInstance(tableName).destroy(airtableMap[codigo].id);
+        if (!xmlCodigosSet.has(codigo)) {
+            try {
+                await baseInstance(tableName).destroy(airtableMap[codigo].id);
+                console.log(`🗑️ [syncImoveisWithAirtable] Registro removido: ${codigo} (${airtableMap[codigo].id})`);
+                registrosRemovidos++;
+            } catch (error) {
+                console.error(`❌ [syncImoveisWithAirtable] Erro ao remover registro ${codigo}:`, error.message);
+            }
         }
     }
+
+    // 📊 RELATÓRIO FINAL
+    console.log("📊 [syncImoveisWithAirtable] RELATÓRIO FINAL:");
+    console.log(`  - 🆕 Novos imóveis adicionados: ${novosAdicionados}`);
+    console.log(`  - ℹ️ Imóveis já existentes (pulados): ${jaExistentes}`);
+    console.log(`  - 🧹 Duplicatas removidas do Airtable: ${duplicatesInAirtable.length}`);
+    console.log(`  - ⚠️ Duplicatas encontradas no XML: ${duplicatesInXml.length}`);
+    console.log(`  - 🗑️ Registros removidos (não estão mais no XML): ${registrosRemovidos}`);
+    console.log(`  - 📋 Total de imóveis únicos processados: ${imoveisUnicos.length}`);
+    
+    return {
+        novosAdicionados,
+        jaExistentes,
+        duplicatasRemovidas: duplicatesInAirtable.length,
+        duplicatasXml: duplicatesInXml.length,
+        registrosRemovidos,
+        totalProcessados: imoveisUnicos.length
+    };
+}
+
+/**
+ * Salva dados de vídeo na tabela "Videos" do Airtable
+ * @param {Array} videosArray - Array de objetos com dados das imagens para processamento de vídeo
+ * @param {string} customEmail - Email do usuário
+ * @param {string} customClientId - ID do cliente (relacionamento)
+ * @param {string} customInvoiceId - ID da fatura (relacionamento)
+ * @param {string} customUserId - ID do usuário (relacionamento)
+ * @returns {Promise<Array>} Array com resultados da operação
+ * 
+ * Campos suportados:
+ * - property_code: Single line text
+ * - property_URL: URL
+ * - status: Single select (padrão: "Enviado")
+ * - workflow: Single select (padrão: "MagicMotion")
+ * - client: Link to another record
+ * - Invoices: Link to another record
+ * - user: Link to another record
+ * - description: Long text
+ * - mm_type: Single select
+ * - vid_orientation: Single select
+ * - input_img: Attachment
+ * - output_vid: Attachment
+ * - user_email: Email
+ */
+export async function upsetVideosInAirtable(
+    videosArray,
+    customEmail,
+    customClientId,
+    customInvoiceId,
+    customUserId
+) {
+    console.log("🎬 [upsetVideosInAirtable] Iniciando processamento para tabela Videos");
+    console.log("📊 [upsetVideosInAirtable] Total de itens:", videosArray.length);
+    
+    // ✅ LOGS ESPECÍFICOS PARA DEBUG DOS PARÂMETROS RECEBIDOS
+    console.log("🎬 [upsetVideosInAirtable] PARÂMETROS RECEBIDOS DEBUG:");
+    console.log(`👤 [upsetVideosInAirtable] customClientId recebido: "${customClientId}" (tipo: ${typeof customClientId})`);
+    console.log(`📄 [upsetVideosInAirtable] customInvoiceId recebido: "${customInvoiceId}" (tipo: ${typeof customInvoiceId})`);
+    console.log(`👤 [upsetVideosInAirtable] customUserId recebido: "${customUserId}" (tipo: ${typeof customUserId})`);
+    console.log(`📧 [upsetVideosInAirtable] customEmail recebido: "${customEmail}" (tipo: ${typeof customEmail})`);
+    
+    // Configuração do Airtable
+    console.log("🔧 [upsetVideosInAirtable] Configurando Airtable...");
+    console.log("  - AIRTABLE_API_KEY existe:", !!process.env.AIRTABLE_API_KEY);
+    console.log("  - AIRTABLE_BASE_ID:", process.env.AIRTABLE_BASE_ID);
+    
+    const baseInstance = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(process.env.AIRTABLE_BASE_ID);
+    const tableName = "Videos";
+    
+    // Valores processados - VERIFICAR SE OS VALORES ESTÃO CHEGANDO
+    const email = customEmail || (videosArray[0]?.userEmail || 'email@default.com');
+    const clientId = customClientId || (videosArray[0]?.clientId || null);
+    const invoiceId = customInvoiceId || (videosArray[0]?.invoiceId || null);
+    const userId = customUserId || (videosArray[0]?.userId || null);
+    
+    console.log("🔍 [upsetVideosInAirtable] Valores processados após fallbacks:");
+    console.log(`👤 [upsetVideosInAirtable] clientId final: "${clientId}" (tipo: ${typeof clientId})`);
+    console.log(`📄 [upsetVideosInAirtable] invoiceId final: "${invoiceId}" (tipo: ${typeof invoiceId})`);
+    console.log(`👤 [upsetVideosInAirtable] userId final: "${userId}" (tipo: ${typeof userId})`);
+    console.log(`📧 [upsetVideosInAirtable] email final: "${email}" (tipo: ${typeof email})`);
+    
+    const results = [];
+    
+    // 🔍 Função para validar se um ID pertence à tabela correta para evitar erros de relacionamento
+    const validateRelationshipId = async (recordId, fieldName, tableName) => {
+        try {
+            // IDs conhecidos que causam problemas específicos
+            const knownProblematicIds = {
+                'recVQHMKjiU0zz8RD': {
+                    field: 'invoice',
+                    issue: 'Pertence à tabela errada para o campo invoice',
+                    solution: 'Remover do campo invoice'
+                }
+            };
+            
+            if (knownProblematicIds[recordId]) {
+                const problem = knownProblematicIds[recordId];
+                if (problem.field === fieldName) {
+                    console.log(`🚨 [validateRelationshipId] ID problemático detectado: ${recordId}`);
+                    console.log(`  - Campo: ${fieldName}`);
+                    console.log(`  - Problema: ${problem.issue}`);
+                    console.log(`  - Solução: ${problem.solution}`);
+                    return false; // ID não é válido para este campo
+                }
+            }
+            
+            return true; // ID parece válido
+            
+        } catch (error) {
+            console.log(`⚠️ [validateRelationshipId] Erro ao validar ${recordId}: ${error.message}`);
+            return false; // Em caso de erro, considerar inválido por segurança
+        }
+    };
+    
+    // Função para validar campos de single select
+    const getSelectValue = (value) => {
+        if (!value) return null;
+        const cleanValue = value.toString().replace(/^"+|"+$/g, '').trim();
+        return cleanValue !== '' ? cleanValue : null;
+    };
+    
+    // Processar cada item do array (cada imagem = 1 registro)
+    for (let i = 0; i < videosArray.length; i++) {
+        const video = videosArray[i];
+        
+        // Definir imageUrl ANTES do try para estar disponível no catch
+        const imageUrl = video.imgUrl || (Array.isArray(video.imgUrls) ? video.imgUrls[0] : null) || 
+                        (Array.isArray(video["INPUT IMAGES"]) ? video["INPUT IMAGES"][0] : null);
+        
+        // Definir fields ANTES do try para estar disponível no catch
+        let fields = null;
+        
+        try {
+            console.log(`🎬 [upsetVideosInAirtable] Processando item ${i + 1}/${videosArray.length}`);
+            
+            if (!imageUrl) {
+                console.log(`⚠️ [upsetVideosInAirtable] Item ${i + 1}: Nenhuma URL de imagem válida encontrada`);
+                results.push({ index: i, status: 'skipped', error: 'Nenhuma URL de imagem válida', imgUrl: null });
+                continue;
+            }
+            
+            // 📋 CAMPOS BÁSICOS OBRIGATÓRIOS
+            fields = {
+                // Single line text
+                property_code: video.codigo || video.property_code || '',
+                
+                // URL 
+                property_URL: video.propertyUrl || video.property_URL || '',
+                
+                // Attachment (array de objetos com URL)
+                input_img: [{ url: imageUrl }],
+                
+                // Email
+                user_email: email,
+                
+                // Long text
+                description: video.observacoes || video.descricao || video.description || '',
+                
+                // Single select - valores padrão se não fornecidos
+                status: getSelectValue(video.status || video.suggestionstatus) || 'Enviado',
+                workflow: getSelectValue(video.workflow || video.imgWorkflow) || 'MagicMotion'
+            };
+            
+            console.log("🔍 [upsetVideosInAirtable] Validando relacionamentos e campos...");
+            
+            // 🔗 CAMPOS DE RELACIONAMENTO (Link to another record)
+            console.log("🔗 [upsetVideosInAirtable] INICIANDO PROCESSAMENTO DE RELACIONAMENTOS");
+            console.log(`🔗 [upsetVideosInAirtable] clientId disponível: "${clientId}" (${clientId ? 'sim' : 'não'})`);
+            console.log(`🔗 [upsetVideosInAirtable] invoiceId disponível: "${invoiceId}" (${invoiceId ? 'sim' : 'não'})`);
+            console.log(`🔗 [upsetVideosInAirtable] userId disponível: "${userId}" (${userId ? 'sim' : 'não'})`);
+            
+            // Campo client - Link to another record
+            if (clientId && clientId.trim() !== '' && clientId !== 'default_client') {
+                console.log(`🔍 [DEBUG] Validando clientId: ${clientId}`);
+                console.log(`  - Formato válido: ${clientId.startsWith('rec') && clientId.length >= 17}`);
+                console.log(`  - Será usado no campo 'client' da tabela '${tableName}'`);
+                
+                const isValidClientId = await validateRelationshipId(clientId, 'client', tableName);
+                
+                if (isValidClientId) {
+                    fields.client = [clientId]; // Array para relacionamento
+                    console.log("  - 🔗 Campo client adicionado:", clientId);
+                } else {
+                    console.log(`  - ❌ ID ${clientId} não é válido para o campo client - REMOVIDO`);
+                }
+            } else {
+                console.log(`⚠️ [upsetVideosInAirtable] Cliente ignorado: "${clientId}" (inválido ou padrão)`);
+            }
+            
+            // Campo Invoices - Link to another record (relacionamento)
+            if (invoiceId && invoiceId.trim() !== '' && invoiceId !== 'default_invoice') {
+                console.log(`🎫 [DEBUG] Validando invoiceId: ${invoiceId}`);
+                console.log(`  - Formato válido: ${invoiceId.startsWith('rec') && invoiceId.length >= 17}`);
+                console.log(`  - Será usado no campo 'Invoices' da tabela '${tableName}'`);
+                
+                const isValidInvoiceId = await validateRelationshipId(invoiceId, 'Invoices', tableName);
+                
+                if (isValidInvoiceId) {
+                    fields.Invoices = [invoiceId]; // Array para relacionamento
+                    console.log("  - 🔗 Campo Invoices adicionado:", invoiceId);
+                } else {
+                    console.log(`  - ❌ ID ${invoiceId} não é válido para o campo Invoices - REMOVIDO`);
+                }
+            } else {
+                console.log(`⚠️ [upsetVideosInAirtable] Invoice ignorado: "${invoiceId}" (inválido ou padrão)`);
+            }
+            
+            // Campo user - Link to another record
+            if (userId && userId.trim() !== '' && userId !== 'default_user') {
+                console.log(`👤 [DEBUG] Validando userId: ${userId}`);
+                console.log(`  - Formato válido: ${userId.startsWith('rec') && userId.length >= 17}`);
+                console.log(`  - Será usado no campo 'user' da tabela '${tableName}'`);
+                
+                const isValidUserId = await validateRelationshipId(userId, 'user', tableName);
+                
+                if (isValidUserId) {
+                    fields.user = [userId]; // Array para relacionamento
+                    console.log("  - 🔗 Campo user adicionado:", userId);
+                } else {
+                    console.log(`  - ❌ ID ${userId} não é válido para o campo user - REMOVIDO`);
+                }
+            }
+            
+            // 📋 CAMPOS OPCIONAIS - Single select
+            console.log("⚙️ [upsetVideosInAirtable] Processando campos opcionais...");
+            
+            // mm_type - Single select
+            const mmType = getSelectValue(video.mm_type || video.mmType || video.magicMotionType);
+            if (mmType) {
+                fields.mm_type = mmType;
+                console.log("  - mm_type:", mmType);
+            }
+            
+            // vid_orientation - Single select
+            const vidOrientation = getSelectValue(video.vid_orientation || video.formatoVideo || video.videoProportion || video.videoOrientation);
+            if (vidOrientation) {
+                fields.vid_orientation = vidOrientation;
+                console.log("  - vid_orientation:", vidOrientation);
+            }
+            
+            // 📎 CAMPO DE OUTPUT (se disponível)
+            // output_vid - Attachment
+            const outputVideoUrl = video.output_vid || video.outputVideo || video.videoUrl;
+            if (outputVideoUrl && outputVideoUrl.trim() !== '') {
+                fields.output_vid = [{ url: outputVideoUrl }];
+                console.log("  - output_vid adicionado:", outputVideoUrl.substring(0, 50) + "...");
+            }
+            
+            // VALIDAÇÃO PREVENTIVA FINAL DOS CAMPOS
+            console.log("🛡️ [upsetVideosInAirtable] Validação preventiva dos campos...");
+            const problematicFields = [];
+            
+            for (const [fieldName, fieldValue] of Object.entries(fields)) {
+                // Verificar campo input_img especificamente
+                if (fieldName === 'input_img') {
+                    console.log(`  - ${fieldName}: ${Array.isArray(fieldValue) ? 'array' : typeof fieldValue} - ${JSON.stringify(fieldValue)}`);
+                    
+                    if (Array.isArray(fieldValue) && fieldValue.length > 0) {
+                        const attachment = fieldValue[0];
+                        if (attachment && attachment.url) {
+                            // Verificar se a URL é válida
+                            try {
+                                new URL(attachment.url);
+                                console.log(`    - ✅ URL válida`);
+                            } catch (urlError) {
+                                console.error(`    - ❌ URL inválida: ${urlError.message}`);
+                                problematicFields.push(`${fieldName} contém URL inválida: ${attachment.url}`);
+                            }
+                        } else {
+                            console.error(`    - ❌ Attachment sem URL válida`);
+                            problematicFields.push(`${fieldName} contém attachment sem URL`);
+                        }
+                    } else {
+                        console.error(`    - ❌ input_img não é um array válido`);
+                        problematicFields.push(`${fieldName} deveria ser array com attachments`);
+                    }
+                }
+                
+                // Verificar campos de relacionamento (arrays)
+                else if (['client', 'Invoices', 'user'].includes(fieldName)) {
+                    const isArray = Array.isArray(fieldValue);
+                    console.log(`  - ${fieldName}: ${isArray ? 'array' : typeof fieldValue} - ${JSON.stringify(fieldValue)}`);
+                    
+                    if (!isArray) {
+                        problematicFields.push(`${fieldName} deveria ser array mas é ${typeof fieldValue}`);
+                    }
+                }
+                
+                // Verificar campo output_vid (attachment)
+                else if (fieldName === 'output_vid') {
+                    console.log(`  - ${fieldName}: ${Array.isArray(fieldValue) ? 'array' : typeof fieldValue} - ${JSON.stringify(fieldValue)}`);
+                    
+                    if (Array.isArray(fieldValue) && fieldValue.length > 0) {
+                        const attachment = fieldValue[0];
+                        if (attachment && attachment.url) {
+                            try {
+                                new URL(attachment.url);
+                                console.log(`    - ✅ URL de vídeo válida`);
+                            } catch (urlError) {
+                                console.error(`    - ❌ URL de vídeo inválida: ${urlError.message}`);
+                                problematicFields.push(`${fieldName} contém URL inválida: ${attachment.url}`);
+                            }
+                        } else {
+                            console.error(`    - ❌ Attachment de vídeo sem URL válida`);
+                            problematicFields.push(`${fieldName} contém attachment sem URL`);
+                        }
+                    }
+                }
+                
+                // Verificar outros campos
+                else {
+                    console.log(`  - ${fieldName}: ${typeof fieldValue} - ${JSON.stringify(fieldValue)}`);
+                }
+            }
+            
+            if (problematicFields.length > 0) {
+                console.error("🚨 [upsetVideosInAirtable] CAMPOS PROBLEMÁTICOS DETECTADOS:");
+                problematicFields.forEach(problem => console.error(`  - ❌ ${problem}`));
+            }
+            
+            // 🔍 DEBUG: Log detalhado dos campos antes de criar
+            console.log("🔍 [DEBUG] Resumo dos campos que serão enviados:");
+            console.log(`  - property_code: ${fields.property_code}`);
+            console.log(`  - property_URL: ${fields.property_URL}`);
+            console.log(`  - input_img: ${JSON.stringify(fields.input_img)}`);
+            console.log(`  - user_email: ${fields.user_email}`);
+            console.log(`  - description: ${fields.description ? fields.description.substring(0, 50) + '...' : 'vazio'}`);
+            console.log(`  - status: ${fields.status || 'não definido'}`);
+            console.log(`  - workflow: ${fields.workflow || 'não definido'}`);
+            console.log(`  - client: ${fields.client ? JSON.stringify(fields.client) : 'não definido'} (relacionamento)`);
+            console.log(`  - Invoices: ${fields.Invoices ? JSON.stringify(fields.Invoices) : 'não definido'} (relacionamento)`);
+            console.log(`  - user: ${fields.user ? JSON.stringify(fields.user) : 'não definido'} (relacionamento)`);
+            console.log(`  - mm_type: ${fields.mm_type || 'não definido'}`);
+            console.log(`  - vid_orientation: ${fields.vid_orientation || 'não definido'}`);
+            console.log(`  - output_vid: ${fields.output_vid ? 'presente' : 'não definido'} (attachment)`);
+            console.log(`  - Total de campos: ${Object.keys(fields).length}`);
+            
+            // Criar registro na tabela Videos copy
+            console.log("💾 [upsetVideosInAirtable] Criando registro...");
+            console.log("📋 [upsetVideosInAirtable] Campos que serão enviados:", Object.keys(fields));
+            
+            const result = await baseInstance(tableName).create(fields);
+            
+            console.log(`✅ [upsetVideosInAirtable] Registro criado: ${result.id}`);
+            
+            results.push({ 
+                index: i, 
+                status: 'created', 
+                id: result.id, 
+                imgUrl: imageUrl 
+            });
+            
+        } catch (error) {
+            console.log(`❌ [upsetVideosInAirtable] Erro ao processar item ${i + 1}: ${error.message}`);
+            console.error("🔍 [upsetVideosInAirtable] Erro completo:", error);
+            console.error("🔍 [upsetVideosInAirtable] Erro nome:", error.name);
+            console.error("🔍 [upsetVideosInAirtable] Erro detalhes:", error.error);
+            
+            // 🔍 DEBUG: Análise específica do erro ROW_TABLE_DOES_NOT_MATCH_LINKED_TABLE
+            if (error.message.includes('ROW_TABLE_DOES_NOT_MATCH_LINKED_TABLE') || error.error === 'ROW_TABLE_DOES_NOT_MATCH_LINKED_TABLE') {
+                console.error("🚨 [upsetVideosInAirtable] ERRO DE RELACIONAMENTO DETECTADO!");
+                console.error("🔍 [upsetVideosInAirtable] Este erro indica que um ID está sendo usado no campo errado");
+                console.error("📊 [upsetVideosInAirtable] Analisando campos de relacionamento enviados...");
+                
+                if (fields !== null) {
+                    console.error("📋 [upsetVideosInAirtable] Campos de relacionamento encontrados:");
+                    
+                    // Verificar todos os campos de relacionamento
+                    const relationshipFields = ['client', 'Invoices', 'user'];
+                    
+                    for (const fieldName of relationshipFields) {
+                        if (fields[fieldName]) {
+                            const fieldValue = fields[fieldName];
+                            console.error(`  - ${fieldName}: ${JSON.stringify(fieldValue)}`);
+                            
+                            if (Array.isArray(fieldValue) && fieldValue.length > 0) {
+                                const recordId = fieldValue[0];
+                                console.error(`    - Record ID: ${recordId}`);
+                                console.error(`    - Formato válido: ${recordId.startsWith('rec') && recordId.length >= 17}`);
+                                
+                                // Identificar o ID específico que está causando o erro
+                                if (error.message.includes(recordId)) {
+                                    console.error(`    - 🎯 ENCONTRADO! Este é o ID que está causando o erro!`);
+                                    console.error(`    - Campo problemático: ${fieldName}`);
+                                    console.error(`    - ID problemático: ${recordId}`);
+                                    console.error(`    - Tabela destino: ${tableName}`);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            
+            // Verificar se é erro de validação de campo
+            if (error.message.includes('Value is not an array of record IDs')) {
+                console.error("🚨 [upsetVideosInAirtable] ERRO DE VALIDAÇÃO DE CAMPO DETECTADO!");
+                console.error("🔍 [upsetVideosInAirtable] Analisando campos enviados...");
+                console.error("📊 [upsetVideosInAirtable] Fields definido?", fields !== null);
+                
+                // Mostrar todos os campos que foram enviados
+                if (fields !== null) {
+                    console.error("📋 [upsetVideosInAirtable] Total de campos:", Object.keys(fields).length);
+                    for (const [fieldName, fieldValue] of Object.entries(fields)) {
+                        const isArray = Array.isArray(fieldValue);
+                        const valueType = isArray ? 'array' : typeof fieldValue;
+                        console.error(`  - ${fieldName}: ${valueType} = ${JSON.stringify(fieldValue)}`);
+                        
+                        // Identificar possíveis culpados
+                        if (isArray && fieldValue.length > 0 && typeof fieldValue[0] === 'string') {
+                            console.error(`    ⚠️  SUSPEITO: ${fieldName} é array de strings - pode ser campo de relationship`);
+                        }
+                    }
+                } else {
+                    console.error("❌ [upsetVideosInAirtable] Fields não está definido - erro aconteceu antes da criação dos campos");
+                }
+            }
+            
+            console.log("🔍 [upsetVideosInAirtable] Stack trace:", error.stack);
+            
+            results.push({ 
+                index: i, 
+                status: 'error', 
+                error: error.message, 
+                imgUrl: imageUrl || 'URL_NOT_AVAILABLE' 
+            });
+        }
+    }
+    
+    // Log final
+    const successCount = results.filter(r => r.status === 'created').length;
+    const errorCount = results.filter(r => r.status === 'error').length;
+    const skippedCount = results.filter(r => r.status === 'skipped').length;
+    
+    console.log("📊 [upsetVideosInAirtable] Resumo final:");
+    console.log("  - ✅ Sucessos:", successCount);
+    console.log("  - ❌ Erros:", errorCount);
+    console.log("  - ⏭️ Pulados:", skippedCount);
+    console.log("  - 📋 Total processado:", results.length);
+    
+    console.log("🏁 [upsetVideosInAirtable] Função finalizada, retornando resultados");
+    return results;
 }

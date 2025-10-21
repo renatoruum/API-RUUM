@@ -9,6 +9,7 @@ import fetch from "node-fetch";
 import chatgptRoute from "./routes/sendChatGpt.js";
 import importXmlRoute from "./routes/importXml.js";
 import updateImagesAirtableRoute from "./routes/updateImagesAirtable.js";
+import updateVideosAirtableRoute from "./routes/updateVideosAirtable.js";
 import xmlWatcherRoute from "./routes/xmlWatcher.js";
 import sendShotStackRoute from "./routes/sendShotStack.js";
 import sendRunwayRoute from "./routes/sendRunway.js";
@@ -17,6 +18,7 @@ import sendVirtualStagingRoute from "./routes/sendVirtualStaging.js";
 import gaiaWebhookRoute from "./routes/gaiaWebhook.js";
 import firebaseRoutes from "./routes/firebase.js";
 import firebaseStorageRoutes from "./routes/firebaseStorage.js";
+import firebaseUploadRoutes from "./routes/firebaseUpload.js";
 
 const app = express();
 app.use(cors());
@@ -78,6 +80,7 @@ app.use(express.json({
 app.use("/api", chatgptRoute);
 app.use("/api", importXmlRoute);
 app.use("/api", updateImagesAirtableRoute);
+app.use("/api", updateVideosAirtableRoute);
 app.use("/api", xmlWatcherRoute);
 app.use("/api", sendRunwayRoute);
 app.use("/api", sendShotStackRoute);
@@ -88,6 +91,9 @@ app.use("/api", firebaseRoutes);
 
 // Rota de teste para upload de imagem local para o Storage
 app.use("/api", firebaseStorageRoutes);
+
+// Rotas Firebase Upload organizadas (PRINCIPAL - usar estas!)
+app.use("/api/firebase", firebaseUploadRoutes);
 
 // Endpoint /webhook
 app.post("/webhook", async (req, res) => {
