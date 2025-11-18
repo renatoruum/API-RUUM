@@ -1229,6 +1229,170 @@ export async function upsetImagesInAirtable(
 }
 
 
+/**
+ * Salva imagem processada pelo FLUX Kontext na tabela Images do Airtable
+ * @param {Object} processedImageData - Dados da imagem processada
+ * @param {string} processedImageData.property_code - Código do imóvel
+ * @param {string} processedImageData.input_image_url - URL da imagem de entrada (Virtual Staging)
+ * @param {string} processedImageData.output_image_url - URL da imagem processada pelo FLUX
+ * @param {string} processedImageData.property_url - URL da propriedade (opcional)
+ * @param {string} processedImageData.room_type - Tipo de ambiente
+ * @param {string} processedImageData.style - Estilo aplicado
+ * @param {string} processedImageData.workflow - Workflow (padrão: "VS+FLUX")
+ * @param {string} processedImageData.client_id - ID do cliente (relacionamento)
+ * @param {string} processedImageData.user_id - ID do usuário (relacionamento)
+ * @param {string} processedImageData.invoice_id - ID da fatura (opcional)
+ * @param {string} processedImageData.request_log - Log/observações do processamento
+ * @returns {Promise<Object>} Resultado da operação com ID do registro criado
+ */
+export async function saveProcessedFluxImage(processedImageData) {
+    console.log("💾 [saveProcessedFluxImage] Iniciando salvamento de imagem processada pelo FLUX...");
+    
+    const baseInstance = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(process.env.AIRTABLE_BASE_ID);
+    const tableName = "Images";
+    
+    try {
+        // Validação dos campos obrigatórios
+        if (!processedImageData.output_image_url) {
+            throw new Error("Campo obrigatório ausente: output_image_url");
+        }
+        
+        // Baixar a imagem do FLUX e fazer upload como attachment
+        console.log("📥 [saveProcessedFluxImage] Preparando attachment da imagem processada...");
+        
+        // Campos básicos
+        const fields = {
+            property_code: processedImageData.property_code || '',
+            workflow: processedImageData.workflow || 'SmartStage', // Workflow específico para pipeline VS+FLUX
+            status: 'Finalizado', // Status indicando que já foi processado
+            request_log: processedImageData.request_log || `Processado via pipeline FLUX Kontext em ${new Date().toISOString()}`,
+        };
+        
+        // Campo output_img como Attachment - imagem processada pelo FLUX
+        fields.output_img = [{ url: processedImageData.output_image_url }];
+        console.log("  - output_img (FLUX):", processedImageData.output_image_url.substring(0, 50) + "...");
+        
+        // Campo input_img (opcional) - imagem do Virtual Staging
+        if (processedImageData.input_image_url) {
+            fields.input_img = [{ url: processedImageData.input_image_url }];
+            console.log("  - input_img (VS):", processedImageData.input_image_url.substring(0, 50) + "...");
+        }
+        
+        // Property URL
+        if (processedImageData.property_url) {
+            fields.property_URL = processedImageData.property_url;
+            console.log("  - property_URL:", processedImageData.property_url);
+        }
+        
+        // Room type - Mapear para valores do Airtable
+        if (processedImageData.room_type) {
+            // Mapeamento de room_type para valores aceitos no Airtable
+            const roomTypeMapping = {
+                'living': 'Sala de estar/jantar',
+                'bedroom': 'Quarto',
+                'kitchen': 'Cozinha',
+                'bathroom': 'Banheiro',
+                'dining': 'Sala de jantar',
+                'office': 'Escritório',
+                'outdoor': 'Área externa',
+                'laundry': 'Lavanderia'
+            };
+            
+            const mappedRoomType = roomTypeMapping[processedImageData.room_type] || processedImageData.room_type;
+            fields.room_type = mappedRoomType;
+            console.log("  - room_type:", processedImageData.room_type, "→", mappedRoomType);
+        }
+        
+        // Relacionamentos
+        console.log("🔗 [saveProcessedFluxImage] Adicionando relacionamentos...");
+        
+        // Client (obrigatório para relacionamento)
+        if (processedImageData.client_id && processedImageData.client_id.trim() !== '') {
+            fields.client = [processedImageData.client_id]; // Array para relacionamento
+            console.log("  - client:", processedImageData.client_id);
+        }
+        
+        // User (obrigatório para relacionamento)
+        if (processedImageData.user_id && processedImageData.user_id.trim() !== '') {
+            fields.user = [processedImageData.user_id]; // Array para relacionamento
+            console.log("  - user:", processedImageData.user_id);
+        }
+        
+        // Invoice (opcional)
+        if (processedImageData.invoice_id && processedImageData.invoice_id.trim() !== '') {
+            fields.invoice = [processedImageData.invoice_id]; // Array para relacionamento
+            console.log("  - invoice:", processedImageData.invoice_id);
+        }
+        
+        // Style (buscar ID do estilo se fornecido como string)
+        if (processedImageData.style) {
+            console.log("🎨 [saveProcessedFluxImage] Processando estilo:", processedImageData.style);
+            try {
+                const styleRecords = await baseInstance("Styles").select({
+                    filterByFormula: `{Style Name} = '${processedImageData.style}'`,
+                    maxRecords: 1
+                }).firstPage();
+                
+                if (styleRecords.length > 0) {
+                    fields.style = [styleRecords[0].id]; // Array para relacionamento
+                    console.log("  - style encontrado, ID:", styleRecords[0].id);
+                } else {
+                    console.log("  - style não encontrado na tabela Styles:", processedImageData.style);
+                }
+            } catch (styleError) {
+                console.log("  - Erro ao buscar estilo:", styleError.message);
+            }
+        }
+        
+        // Campos adicionais do pipeline
+        if (processedImageData.pipeline_id) {
+            const currentLog = fields.request_log || '';
+            fields.request_log = currentLog + `\nPipeline ID: ${processedImageData.pipeline_id}`;
+        }
+        
+        if (processedImageData.staging_render_id) {
+            const currentLog = fields.request_log || '';
+            fields.request_log = currentLog + `\nVirtual Staging Render ID: ${processedImageData.staging_render_id}`;
+        }
+        
+        if (processedImageData.flux_task_id) {
+            const currentLog = fields.request_log || '';
+            fields.request_log = currentLog + `\nFLUX Task ID: ${processedImageData.flux_task_id}`;
+        }
+        
+        // Log de campos finais
+        console.log("📋 [saveProcessedFluxImage] Campos que serão enviados:", Object.keys(fields));
+        console.log("🔍 [saveProcessedFluxImage] Resumo:");
+        console.log(`  - Total de campos: ${Object.keys(fields).length}`);
+        console.log(`  - output_img presente: ${!!fields.output_img}`);
+        console.log(`  - input_img presente: ${!!fields.input_img}`);
+        console.log(`  - Relacionamentos: client=${!!fields.client}, user=${!!fields.user}, invoice=${!!fields.invoice}`);
+        
+        // Criar registro na tabela Images
+        console.log("💾 [saveProcessedFluxImage] Criando registro na tabela Images...");
+        const result = await baseInstance(tableName).create(fields);
+        
+        console.log(`✅ [saveProcessedFluxImage] Registro criado com sucesso: ${result.id}`);
+        
+        return {
+            success: true,
+            record_id: result.id,
+            table: tableName,
+            message: 'Imagem processada salva com sucesso no Airtable'
+        };
+        
+    } catch (error) {
+        console.error("❌ [saveProcessedFluxImage] Erro ao salvar imagem:", error.message);
+        console.error("🔍 [saveProcessedFluxImage] Erro completo:", error);
+        
+        return {
+            success: false,
+            error: error.message,
+            message: 'Erro ao salvar imagem processada no Airtable'
+        };
+    }
+}
+
 export async function syncImoveisWithAirtable(imoveisFromXml) {
     const tableName = "Tamiles";
     const baseInstance = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(process.env.AIRTABLE_BASE_ID);

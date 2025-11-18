@@ -8,7 +8,7 @@ const VIRTUAL_STAGING_BASE_URL = "https://api.virtualstagingai.app/v1";
 // Estilos disponíveis
 export const STYLES = {
   MODERN: "modern",
-  SCANDINAVIAN: "scandinavian", 
+  SCANDINAVIAN: "scandinavian",
   INDUSTRIAL: "industrial",
   MIDCENTURY: "midcentury",
   LUXURY: "luxury",
@@ -36,63 +36,48 @@ export async function testConnection() {
       throw new Error("VIRTUAL_STAGING_API_KEY não definida");
     }
 
-
+    // Teste fazendo uma requisição GET para verificar autenticação
+    // Sem render_id retornará 400, mas confirma que a API key é válida
     const response = await axios.get(
-      `${VIRTUAL_STAGING_BASE_URL}/ping`,
+      `${VIRTUAL_STAGING_BASE_URL}/render`,
       {
         headers: {
           "Authorization": `Api-Key ${VIRTUAL_STAGING_API_KEY}`,
           "Content-Type": "application/json"
+        },
+        validateStatus: function (status) {
+          // Aceita 200-299 e 400 como válidos (400 significa que a auth funcionou)
+          return (status >= 200 && status < 300) || status === 400;
         }
       }
     );
 
-    
     return {
       success: true,
-      data: response.data
+      message: "API Key válida",
+      authenticated: response.status !== 401 && response.status !== 403
     };
 
   } catch (error) {
-    throw error;
-  }
-}
-
-// Função para obter estilos e tipos de ambiente disponíveis
-export async function getAvailableOptions() {
-  try {
-    if (!VIRTUAL_STAGING_API_KEY) {
-      throw new Error("VIRTUAL_STAGING_API_KEY não definida");
+    if (error.response?.status === 401 || error.response?.status === 403) {
+      throw new Error("API Key inválida ou sem permissões");
     }
-
-
-    const response = await axios.get(
-      `${VIRTUAL_STAGING_BASE_URL}/options`,
-      {
-        headers: {
-          "Authorization": `Api-Key ${VIRTUAL_STAGING_API_KEY}`,
-          "Content-Type": "application/json"
-        }
-      }
-    );
-
-    
-    return response.data;
-
-  } catch (error) {
     throw error;
   }
 }
 
 // Função principal para criar virtual staging
-export async function createVirtualStaging({ 
-  image_url, 
-  room_type = "living", 
-  style = "modern", 
-  declutter_mode = "off",
-  add_furniture = true,
-  wait_for_completion = true 
-}) {
+export async function createVirtualStaging(
+  {
+    image_url,
+    room_type = "living",
+    style = "modern",
+    declutter_mode = "off",
+    add_furniture = true,
+    wait_for_completion = true,
+    seed = null,
+    enhance_prompt = false
+  }) {
   try {
     if (!VIRTUAL_STAGING_API_KEY) {
       throw new Error("VIRTUAL_STAGING_API_KEY não definida");
@@ -102,11 +87,20 @@ export async function createVirtualStaging({
       throw new Error("URL da imagem é obrigatória");
     }
 
-
     const requestBody = {
       image_url,
       wait_for_completion
     };
+
+    // Adicionar seed se fornecido (para resultados reproduzíveis)
+    if (seed !== null) {
+      requestBody.seed = seed;
+    }
+
+    // Adicionar enhance_prompt se solicitado
+    if (enhance_prompt) {
+      requestBody.enhance_prompt = true;
+    }
 
     // Adicionar parâmetros baseados no modo
     if (declutter_mode === "off") {
@@ -138,14 +132,14 @@ export async function createVirtualStaging({
       }
     );
 
-    
+
     return {
       success: true,
       data: response.data
     };
 
   } catch (error) {
-    
+
     // Tratamento de erros específicos
     if (error.response?.status === 403) {
       throw new Error("Limite de renders atingido ou plano sem acesso à API");
@@ -154,7 +148,7 @@ export async function createVirtualStaging({
     } else if (error.response?.status === 401) {
       throw new Error("Chave de API inválida ou não fornecida");
     }
-    
+
     throw error;
   }
 }
@@ -170,7 +164,6 @@ export async function getRenderStatus(render_id) {
       throw new Error("ID do render é obrigatório");
     }
 
-
     const response = await axios.get(
       `${VIRTUAL_STAGING_BASE_URL}/render`,
       {
@@ -182,67 +175,23 @@ export async function getRenderStatus(render_id) {
       }
     );
 
-    
     return {
       success: true,
       data: response.data
     };
 
   } catch (error) {
-    throw error;
-  }
-}
-
-// Função para criar variação de um render existente
-export async function createVariation(render_id, { style, wait_for_completion = true }) {
-  try {
-    if (!VIRTUAL_STAGING_API_KEY) {
-      throw new Error("VIRTUAL_STAGING_API_KEY não definida");
+    if (error.response?.status === 404) {
+      throw new Error("Render não encontrado");
     }
-
-    if (!render_id) {
-      throw new Error("ID do render é obrigatório");
-    }
-
-
-    const requestBody = {
-      wait_for_completion
-    };
-
-    if (style) {
-      requestBody.style = style;
-    }
-
-    const response = await axios.post(
-      `${VIRTUAL_STAGING_BASE_URL}/render/create-variation`,
-      requestBody,
-      {
-        params: { render_id },
-        headers: {
-          "Authorization": `Api-Key ${VIRTUAL_STAGING_API_KEY}`,
-          "Content-Type": "application/json"
-        },
-        timeout: wait_for_completion ? 180000 : 30000
-      }
-    );
-
-    
-    return {
-      success: true,
-      data: response.data
-    };
-
-  } catch (error) {
     throw error;
   }
 }
 
 export default {
   testConnection,
-  getAvailableOptions,
   createVirtualStaging,
   getRenderStatus,
-  createVariation,
   STYLES,
   ROOM_TYPES
 };

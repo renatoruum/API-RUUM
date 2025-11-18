@@ -15,10 +15,14 @@ import sendShotStackRoute from "./routes/sendShotStack.js";
 import sendRunwayRoute from "./routes/sendRunway.js";
 import sendElevenLabsRoute from "./routes/sendElevenLabs.js";
 import sendVirtualStagingRoute from "./routes/sendVirtualStaging.js";
+import sendFreepikRoute from "./routes/sendFreepik.js";
+import sendSeedanceRoute from "./routes/sendSeedance.js";
 import gaiaWebhookRoute from "./routes/gaiaWebhook.js";
 import firebaseRoutes from "./routes/firebase.js";
 import firebaseStorageRoutes from "./routes/firebaseStorage.js";
 import firebaseUploadRoutes from "./routes/firebaseUpload.js";
+import sendFluxRoute from "./routes/sendFlux.js";
+import sendImagePipelineRoute from "./routes/sendImagePipeline.js";
 
 const app = express();
 app.use(cors());
@@ -86,8 +90,12 @@ app.use("/api", sendRunwayRoute);
 app.use("/api", sendShotStackRoute);
 app.use("/api", sendElevenLabsRoute);
 app.use("/api", sendVirtualStagingRoute);
+app.use("/api", sendFreepikRoute);
+app.use("/api", sendSeedanceRoute);
 app.use("/api", gaiaWebhookRoute);
 app.use("/api", firebaseRoutes);
+app.use("/api", sendFluxRoute);
+app.use("/api", sendImagePipelineRoute);
 
 // Rota de teste para upload de imagem local para o Storage
 app.use("/api", firebaseStorageRoutes);

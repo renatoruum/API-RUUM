@@ -1,10 +1,8 @@
 import express from "express";
 import { 
   testConnection, 
-  getAvailableOptions, 
   createVirtualStaging, 
   getRenderStatus, 
-  createVariation,
   STYLES,
   ROOM_TYPES 
 } from "../connectors/virtualStaging.js";
@@ -32,30 +30,6 @@ router.get("/virtual-staging/test", async (req, res) => {
   }
 });
 
-// Rota para obter estilos e tipos de ambiente disponíveis
-router.get("/virtual-staging/options", async (req, res) => {
-  try {
-    
-    const options = await getAvailableOptions();
-    
-    res.status(200).json({
-      success: true,
-      message: "Opções carregadas com sucesso",
-      data: {
-        api_options: options,
-        predefined_styles: STYLES,
-        predefined_room_types: ROOM_TYPES
-      }
-    });
-
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: "Erro ao carregar opções",
-      error: error.message
-    });
-  }
-});
 
 // Rota principal para criar virtual staging
 router.post("/virtual-staging/create", async (req, res) => {
@@ -98,7 +72,6 @@ router.post("/virtual-staging/create", async (req, res) => {
         });
       }
     }
-
 
     const result = await createVirtualStaging({
       image_url,
@@ -154,65 +127,6 @@ router.get("/virtual-staging/status/:render_id", async (req, res) => {
       message: "Status obtido com sucesso",
       data: result.data
     });
-
-  } catch (error) {
-    
-    if (error.response?.status === 404) {
-      return res.status(404).json({
-        success: false,
-        message: "Render não encontrado"
-      });
-    }
-
-    res.status(500).json({
-      success: false,
-      message: "Erro interno do servidor",
-      error: error.message
-    });
-  }
-});
-
-// Rota para criar variação de um render existente
-router.post("/virtual-staging/variation/:render_id", async (req, res) => {
-  try {
-    const { render_id } = req.params;
-    const { style, wait_for_completion = true } = req.body;
-
-    if (!render_id) {
-      return res.status(400).json({
-        success: false,
-        message: "ID do render é obrigatório"
-      });
-    }
-
-    // Validar style se fornecido
-    if (style && !Object.values(STYLES).includes(style)) {
-      return res.status(400).json({
-        success: false,
-        message: `Estilo inválido: ${style}`,
-        available_styles: Object.values(STYLES)
-      });
-    }
-
-
-    const result = await createVariation(render_id, {
-      style,
-      wait_for_completion
-    });
-
-    const responseData = {
-      success: true,
-      data: result.data
-    };
-
-    if (wait_for_completion && result.data.result_image_url) {
-      responseData.message = "Variação concluída";
-      responseData.result_image_url = result.data.result_image_url;
-    } else {
-      responseData.message = "Variação iniciada - use o render_id para verificar o progresso";
-    }
-
-    res.status(200).json(responseData);
 
   } catch (error) {
     

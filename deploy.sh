@@ -47,6 +47,8 @@ required_vars=(
     "RUNWAYML_API_SECRET"
     "ELEVENLABS_API_KEY"
     "VIRTUAL_STAGING_API_KEY"
+    "FREEPIK_API_KEY"
+    "BFL_API_KEY"
     "API_TOKEN"
     "FIREBASE_API_KEY"
     "FIREBASE_AUTH_DOMAIN"
@@ -101,6 +103,8 @@ gcloud run deploy "$SERVICE_NAME" \
   --set-env-vars "RUNWAYML_API_SECRET=${RUNWAYML_API_SECRET}" \
   --set-env-vars "ELEVENLABS_API_KEY=${ELEVENLABS_API_KEY}" \
   --set-env-vars "VIRTUAL_STAGING_API_KEY=${VIRTUAL_STAGING_API_KEY}" \
+  --set-env-vars "FREEPIK_API_KEY=${FREEPIK_API_KEY}" \
+  --set-env-vars "BFL_API_KEY=${BFL_API_KEY}" \
   --set-env-vars "NODE_ENV=production" \
   --set-env-vars "API_TOKEN=${API_TOKEN}" \
   --set-env-vars "FIREBASE_API_KEY=${FIREBASE_API_KEY}" \
