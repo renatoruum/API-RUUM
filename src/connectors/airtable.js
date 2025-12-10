@@ -202,7 +202,8 @@ export async function transferApprovedSuggestionToImages(
     // Função para validar campos
     const getSelectValue = (value) => {
         if (!value) return null;
-        const cleanValue = value.toString().replace(/^"+|"+$/g, '').trim();
+        // Remove TODAS as aspas duplas (não só início/fim)
+        const cleanValue = value.toString().replace(/"/g, '').trim();
         return cleanValue !== '' ? cleanValue : null;
     };
     
@@ -213,7 +214,7 @@ export async function transferApprovedSuggestionToImages(
         console.log(`🖼️ [transferApprovedSuggestionToImages] Processando imagem ${i + 1}/${imageUrls.length}: ${imageUrl.substring(0, 50)}...`);
         
         try {
-            
+             
             const fields = {
                 property_code: suggestionData.codigo || '',
                 input_img: [{ url: imageUrl }], // UMA imagem por registro - nome correto do campo
@@ -301,7 +302,16 @@ export async function transferApprovedSuggestionToImages(
             if (finish) fields["finishing"] = finish;
             
             const imageWorkflow = getSelectValue(suggestionData.imgWorkflow);
-            if (imageWorkflow) fields["workflow"] = imageWorkflow;
+            console.log("🔍 [DEBUG] imgWorkflow original:", suggestionData.imgWorkflow);
+            console.log("🔍 [DEBUG] imgWorkflow após getSelectValue:", imageWorkflow);
+            console.log("🔍 [DEBUG] imgWorkflow tipo:", typeof imageWorkflow);
+            console.log("🔍 [DEBUG] imgWorkflow JSON:", JSON.stringify(imageWorkflow));
+            if (imageWorkflow) {
+                // Limpeza extra: remover QUALQUER tipo de aspas (simples, duplas, escapadas)
+                const cleanedWorkflow = imageWorkflow.replace(/["'\\]/g, '').trim();
+                console.log("🔍 [DEBUG] workflow limpo final:", cleanedWorkflow);
+                fields["workflow"] = cleanedWorkflow;
+            }
             
             const suggestionstatus = getSelectValue(suggestionData.suggestionstatus);
             if (suggestionstatus) fields["status"] = suggestionstatus; // Campo correto: status (não Suggestion Status)
@@ -510,7 +520,7 @@ export async function transferApprovedSuggestionToImages(
                     // Identificar possíveis culpados
                     if (isArray && fieldValue.length > 0 && typeof fieldValue[0] === 'string') {
                         console.error(`    ⚠️  SUSPEITO: ${fieldName} é array de strings - pode ser campo de relationship`);
-                    }
+                    }x
                 }
             }
             
@@ -556,7 +566,26 @@ export async function upsetImagesInAirtable(
     processMode = null
 ) {
     
-    const tableName = imageTable || "Images";
+    // 🎯 Determinar tabela automaticamente baseado no workflow
+    let tableName = imageTable || "Images";
+    
+    // Se o primeiro item tem workflow MagicMotion, usar tabela Videos
+    if (imagesArray && imagesArray.length > 0) {
+        const firstItem = imagesArray[0];
+        const workflow = firstItem.imgWorkflow || firstItem.workflow;
+        
+        // Se workflow for MagicMotion, automaticamente usar tabela Videos
+        if (workflow && workflow.toString().replace(/["'\\]/g, '').trim() === 'MagicMotion') {
+            tableName = "Videos";
+            console.log("🎬 [upsetImagesInAirtable] Workflow MagicMotion detectado - usando tabela Videos");
+        } else if (!imageTable) {
+            // Se não especificou tabela e não é MagicMotion, usar Images
+            tableName = "Images";
+            console.log("📷 [upsetImagesInAirtable] Usando tabela padrão: Images");
+        }
+    }
+    
+    console.log("📋 [upsetImagesInAirtable] Tabela final selecionada:", tableName);
     
     // Log de identificação da origem da requisição
     
@@ -591,7 +620,8 @@ export async function upsetImagesInAirtable(
     // Função para validar campos de single select
     const getSelectValue = (value) => {
         if (!value) return null;
-        const cleanValue = value.toString().replace(/^"+|"+$/g, '').trim();
+        // Remove TODAS as aspas duplas (não só início/fim)
+        const cleanValue = value.toString().replace(/"/g, '').trim();
         return cleanValue !== '' ? cleanValue : null;
     };
     
@@ -853,18 +883,33 @@ export async function upsetImagesInAirtable(
                 fields = {
                     property_code: img.codigo || '',
                     input_img: [{ url: imageUrl }], // Nome correto do campo
-                    request_log: img.observacoes || '', // Campo correto: request_log
                 };
+                
+                // 🎬 Usar campo correto baseado na tabela de destino
+                if (tableName === "Videos") {
+                    // Tabela Videos usa campo 'description'
+                    fields.description = img.observacoes || '';
+                    console.log("    - 🎬 Usando campo 'description' para tabela Videos");
+                } else {
+                    // Tabela Images usa campo 'request_log'
+                    fields.request_log = img.observacoes || '';
+                    console.log("    - 📷 Usando campo 'request_log' para tabela Images");
+                }
                 
                 // Adicionar property_URL se disponível  
                 if (img.propertyUrl) {
                     fields.property_URL = img.propertyUrl;
                 }
                 
-                // Metadados de suggestion feed podem ser incluídos no request_log se necessário
+                // Metadados de suggestion feed podem ser incluídos no campo apropriado
                 if (isSuggestionFeedApproval) {
-                    const currentLog = fields.request_log || '';
-                    fields.request_log = currentLog + (currentLog ? '\n' : '') + `[Aprovado via suggestion feed em ${new Date().toISOString()}]`;
+                    if (tableName === "Videos") {
+                        const currentLog = fields.description || '';
+                        fields.description = currentLog + (currentLog ? '\n' : '') + `[Aprovado via suggestion feed em ${new Date().toISOString()}]`;
+                    } else {
+                        const currentLog = fields.request_log || '';
+                        fields.request_log = currentLog + (currentLog ? '\n' : '') + `[Aprovado via suggestion feed em ${new Date().toISOString()}]`;
+                    }
                 }
 
                  // Usar a tabela especificada no parâmetro, não forçar "Images"
@@ -894,20 +939,23 @@ export async function upsetImagesInAirtable(
                 console.log("  - 🎫 invoiceId:", invoiceId);
                 console.log("  - 👤 userId:", userId);
                 
-                // Para tabela Images - TODOS os relacionamentos são arrays
+                // Para tabela Images/Videos - TODOS os relacionamentos são arrays
                 if (invoiceId && invoiceId.trim() !== '') {
                     console.log(`🔍 [DEBUG] Validando invoiceId: ${invoiceId}`);
                     console.log(`  - Formato válido: ${invoiceId.startsWith('rec') && invoiceId.length >= 17}`);
-                    console.log(`  - Será usado no campo 'invoice' da tabela '${actualTableName}'`);
                     
-                    // � Validar se o ID pertence à tabela correta
-                    const isValidInvoiceId = await validateRelationshipId(invoiceId, 'invoice', actualTableName);
+                    // 🎬 Usar campo correto baseado na tabela
+                    const invoiceFieldName = actualTableName === "Videos" ? "Invoices" : "invoice";
+                    console.log(`  - Será usado no campo '${invoiceFieldName}' da tabela '${actualTableName}'`);
+                    
+                    // Validar se o ID pertence à tabela correta
+                    const isValidInvoiceId = await validateRelationshipId(invoiceId, invoiceFieldName, actualTableName);
                     
                     if (isValidInvoiceId) {
-                        fields.invoice = [invoiceId]; // Array para relacionamento invoice
-                        console.log("    - � Campo invoice adicionado como array:", [invoiceId]);
+                        fields[invoiceFieldName] = [invoiceId]; // Array para relacionamento
+                        console.log(`    - 🎫 Campo ${invoiceFieldName} adicionado como array:`, [invoiceId]);
                     } else {
-                        console.log(`    - ❌ ID ${invoiceId} não é válido para o campo invoice - REMOVIDO`);
+                        console.log(`    - ❌ ID ${invoiceId} não é válido para o campo ${invoiceFieldName} - REMOVIDO`);
                     }
                 }
                 if (userId && userId.trim() !== '') {
@@ -946,10 +994,16 @@ export async function upsetImagesInAirtable(
                     console.log("    - room_type:", roomType);
                 }
                 
+                // 🎬 Para tabela Videos, usar mm_type; para Images, usar vid_type
                 const videoTemplate = getSelectValue(img.modeloVideo);
                 if (videoTemplate) {
-                    fields["vid_type"] = videoTemplate;
-                    console.log("    - vid_type:", videoTemplate);
+                    if (tableName === "Videos") {
+                        fields["mm_type"] = videoTemplate;
+                        console.log("    - mm_type:", videoTemplate);
+                    } else {
+                        fields["vid_type"] = videoTemplate;
+                        console.log("    - vid_type:", videoTemplate);
+                    }
                 }
                 
                 const videoProportion = getSelectValue(img.formatoVideo);
@@ -991,8 +1045,11 @@ export async function upsetImagesInAirtable(
                 
                 const imageWorkflow = getSelectValue(img.imgWorkflow);
                 if (imageWorkflow) {
-                    fields["workflow"] = imageWorkflow;
-                    console.log("    - workflow:", imageWorkflow);
+                    // Limpeza extra: remover QUALQUER tipo de aspas (simples, duplas, escapadas)
+                    const cleanedWorkflow = imageWorkflow.replace(/["'\\]/g, '').trim();
+                    fields["workflow"] = cleanedWorkflow;
+                    console.log("    - workflow original:", img.imgWorkflow);
+                    console.log("    - workflow limpo:", cleanedWorkflow);
                 }
                 
                 const suggestionstatus = getSelectValue(img.suggestionstatus);
@@ -1263,13 +1320,14 @@ export async function saveProcessedFluxImage(processedImageData) {
         // Campos básicos
         const fields = {
             property_code: processedImageData.property_code || '',
-            workflow: processedImageData.workflow || 'SmartStage', // Workflow específico para pipeline VS+FLUX
+            workflow: processedImageData.workflow || 'SmartStage', // Workflow específico para pipeline VS+FLUX (imagens)
             status: 'Finalizado', // Status indicando que já foi processado
             request_log: processedImageData.request_log || `Processado via pipeline FLUX Kontext em ${new Date().toISOString()}`,
         };
         
         // Campo output_img como Attachment - imagem processada pelo FLUX
         fields.output_img = [{ url: processedImageData.output_image_url }];
+        
         console.log("  - output_img (FLUX):", processedImageData.output_image_url.substring(0, 50) + "...");
         
         // Campo input_img (opcional) - imagem do Virtual Staging
@@ -1782,7 +1840,8 @@ export async function upsetVideosInAirtable(
     // Função para validar campos de single select
     const getSelectValue = (value) => {
         if (!value) return null;
-        const cleanValue = value.toString().replace(/^"+|"+$/g, '').trim();
+        // Remove TODAS as aspas duplas (não só início/fim)
+        const cleanValue = value.toString().replace(/"/g, '').trim();
         return cleanValue !== '' ? cleanValue : null;
     };
     

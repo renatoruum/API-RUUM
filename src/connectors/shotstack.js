@@ -8,8 +8,9 @@ if (!process.env.SHOTSTACK_API_KEY) {
 }
 
 const SHOTSTACK_API_KEY = process.env.SHOTSTACK_API_KEY;
-const SHOTSTACK_RENDER_URL = "https://api.shotstack.io/edit/stage/render";
-const SHOTSTACK_STATUS_URL = "https://api.shotstack.io/edit/stage/render/";
+// URLs de PRODUÇÃO (v1) - sem marca d'água e qualidade máxima
+const SHOTSTACK_RENDER_URL = "https://api.shotstack.io/edit/v1/render";
+const SHOTSTACK_STATUS_URL = "https://api.shotstack.io/edit/v1/render/";
 
 // Headers padrão para requisições à API do Shotstack
 const getHeaders = () => ({
