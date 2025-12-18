@@ -40,27 +40,40 @@ class FFmpegService {
     /**
      * Baixa arquivo de URL
      */
-    async downloadFile(url, outputPath) {
+    async downloadFile(url, outputPath, timeout = 60000) {
         return new Promise((resolve, reject) => {
             const client = url.startsWith('https') ? https : http;
             
             const file = fsSync.createWriteStream(outputPath);
+            let timeoutId = null;
             
-            client.get(url, (response) => {
+            const cleanup = () => {
+                if (timeoutId) clearTimeout(timeoutId);
+                file.close();
+                try {
+                    fsSync.unlinkSync(outputPath);
+                } catch (e) {}
+            };
+            
+            // Timeout de 60 segundos
+            timeoutId = setTimeout(() => {
+                cleanup();
+                reject(new Error(`Download timeout após ${timeout/1000}s: ${url}`));
+            }, timeout);
+            
+            const request = client.get(url, (response) => {
                 // Segue redirects (301, 302, 303, 307, 308)
                 if (response.statusCode >= 300 && response.statusCode < 400 && response.headers.location) {
-                    file.close();
-                    fsSync.unlink(outputPath, () => {});
+                    cleanup();
                     console.log(`↪️  Seguindo redirect: ${response.headers.location}`);
-                    this.downloadFile(response.headers.location, outputPath)
+                    this.downloadFile(response.headers.location, outputPath, timeout)
                         .then(resolve)
                         .catch(reject);
                     return;
                 }
 
                 if (response.statusCode !== 200) {
-                    file.close();
-                    fsSync.unlink(outputPath, () => {});
+                    cleanup();
                     reject(new Error(`Falha ao baixar: ${response.statusCode}`));
                     return;
                 }
@@ -68,13 +81,27 @@ class FFmpegService {
                 response.pipe(file);
                 
                 file.on('finish', () => {
+                    if (timeoutId) clearTimeout(timeoutId);
                     file.close();
                     console.log(`✅ Download concluído: ${path.basename(outputPath)}`);
                     resolve(outputPath);
                 });
-            }).on('error', (err) => {
-                fsSync.unlink(outputPath, () => {});
+                
+                file.on('error', (err) => {
+                    cleanup();
+                    reject(err);
+                });
+            });
+            
+            request.on('error', (err) => {
+                cleanup();
                 reject(err);
+            });
+            
+            request.setTimeout(timeout, () => {
+                request.destroy();
+                cleanup();
+                reject(new Error(`Request timeout após ${timeout/1000}s: ${url}`));
             });
         });
     }

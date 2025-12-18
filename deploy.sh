@@ -95,6 +95,7 @@ gcloud run deploy "$SERVICE_NAME" \
   --port 8080 \
   --memory 2Gi \
   --cpu 2 \
+  --timeout 600 \
   --set-env-vars "AIRTABLE_API_KEY=${AIRTABLE_API_KEY}" \
   --set-env-vars "AIRTABLE_BASE_ID=${AIRTABLE_BASE_ID}" \
   --set-env-vars "AIRTABLE_TABLE_NAME=${AIRTABLE_TABLE_NAME}" \
