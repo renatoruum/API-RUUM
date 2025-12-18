@@ -247,4 +247,22 @@ router.post('/wait/:renderId', async (req, res) => {
     }
 });
 
+/**
+ * POST /api/ffmpeg/cleanup
+ * Limpa jobs antigos e travados
+ */
+router.post('/cleanup', async (req, res) => {
+    try {
+        const { olderThanMinutes = 30 } = req.body;
+        const result = await ffmpegService.cleanupOldJobs(olderThanMinutes);
+        res.json(result);
+    } catch (error) {
+        console.error('❌ Erro ao limpar jobs:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
+});
+
 export default router;

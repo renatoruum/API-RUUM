@@ -624,6 +624,36 @@ class FFmpegService {
             console.log(`🧹 ${cleaned} jobs antigos removidos da memória`);
         }
     }
+
+    /**
+     * Limpa jobs antigos e travados (forçado via endpoint)
+     */
+    async cleanupOldJobs(olderThanMinutes = 30) {
+        const now = Date.now();
+        const cutoffTime = now - (olderThanMinutes * 60 * 1000);
+        let cleaned = 0;
+        let total = this.jobs.size;
+
+        for (const [jobId, job] of this.jobs.entries()) {
+            const jobTime = new Date(job.created).getTime();
+            const updatedTime = new Date(job.updated).getTime();
+            
+            // Remove jobs antigos ou travados em processing
+            if (jobTime < cutoffTime || 
+                (job.status === 'processing' && updatedTime < cutoffTime)) {
+                this.jobs.delete(jobId);
+                cleaned++;
+                console.log(`🗑️  Job removido: ${jobId} (status: ${job.status}, created: ${job.created})`);
+            }
+        }
+
+        return {
+            success: true,
+            message: `Limpeza concluída: ${cleaned} de ${total} jobs removidos`,
+            cleaned,
+            remaining: this.jobs.size
+        };
+    }
 }
 
 export default new FFmpegService();
