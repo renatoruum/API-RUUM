@@ -1,2 +1,12 @@
 .env
 firebase-service-account.json
+
+# FFmpeg temp e output folders
+temp/
+outputs/
+
+# Ignorar vídeos temporários, MAS permitir a máscara estática
+*.mp4
+!assets/masks/*.mp4
+*.mov
+*.avi

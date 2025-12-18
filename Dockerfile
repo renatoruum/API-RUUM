@@ -13,6 +13,7 @@ RUN npm install
 # Copy the source code and credentials
 COPY src/ ./src/
 COPY credentials/ ./credentials/
+COPY assets/ ./assets/
 
 # Expose the port the app runs on
 EXPOSE 8080
