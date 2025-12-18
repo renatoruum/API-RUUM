@@ -1,6 +1,9 @@
 # Use Node.js 20 as the base image (required for Firebase)
 FROM node:20-alpine
 
+# Install FFmpeg and required dependencies
+RUN apk add --no-cache ffmpeg
+
 # Set the working directory
 WORKDIR /app
 
