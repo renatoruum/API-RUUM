@@ -445,6 +445,12 @@ class FFmpegService {
             ].join(';');
 
             console.log('🎥 Iniciando FFmpeg com filtro complexo...');
+            console.log(`📍 Verificando arquivos de entrada:`);
+            console.log(`   Bottom: ${bottomPath} (existe: ${require('fs').existsSync(bottomPath)})`);
+            console.log(`   Top: ${topPath} (existe: ${require('fs').existsSync(topPath)})`);
+            console.log(`   Mask: ${maskPath} (existe: ${require('fs').existsSync(maskPath)})`);
+            console.log(`📍 Output será: ${outputPath}`);
+            console.log(`📍 Preset: ${preset}, CRF: ${crf}, Duração: ${duration}s`);
 
             ffmpeg()
                 // Input 0: imagem de baixo (por_baixo) - loop
@@ -484,22 +490,26 @@ class FFmpegService {
                 // Sobrescreve se já existir
                 .on('start', (commandLine) => {
                     console.log('📝 Comando FFmpeg:', commandLine);
+                    console.log('⏱️  Iniciando execução FFmpeg...');
                 })
                 
                 .on('progress', (progress) => {
                     const percent = Math.min(Math.round(progress.percent || 0), 99);
                     this.updateJobStatus(jobId, 'processing', percent);
-                    console.log(`📊 Progresso ${jobId}: ${percent}%`);
+                    console.log(`📊 Progresso ${jobId}: ${percent}% | frames: ${progress.frames || 0} | fps: ${progress.currentFps || 0} | time: ${progress.timemark || '0'}`);
                 })
                 
                 .on('end', () => {
                     console.log('✅ Processamento FFmpeg concluído');
+                    console.log(`📁 Arquivo gerado: ${outputPath}`);
                     resolve();
                 })
                 
                 .on('error', (err, stdout, stderr) => {
                     console.error('❌ ERRO no FFmpeg:');
-                    console.error(stderr);
+                    console.error('📄 STDOUT:', stdout);
+                    console.error('📄 STDERR:', stderr);
+                    console.error('📄 Error message:', err.message);
                     reject(new Error(stderr || err.message));
                 })
                 
