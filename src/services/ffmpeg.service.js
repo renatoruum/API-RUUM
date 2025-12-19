@@ -413,7 +413,7 @@ class FFmpegService {
             const qualityPresets = {
                 low: { crf: 28, preset: 'veryfast' },
                 medium: { crf: 23, preset: 'medium' },
-                high: { crf: 18, preset: 'slow' }
+                high: { crf: 18, preset: 'medium' } // Mudado de 'slow' para 'medium' para Cloud Run
             };
 
             const { crf, preset } = qualityPresets[quality] || qualityPresets.high;
