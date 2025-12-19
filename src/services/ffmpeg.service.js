@@ -180,10 +180,10 @@ class FFmpegService {
             beforePath = path.join(this.tempDir, `${jobId}-before${getExtension(beforeUrl)}`);
             afterPath = path.join(this.tempDir, `${jobId}-after${getExtension(afterUrl)}`);
 
-            // Baixa arquivos em paralelo
+            // Baixa arquivos em paralelo (timeout de 180s cada)
             await Promise.all([
-                this.downloadFile(beforeUrl, beforePath),
-                this.downloadFile(afterUrl, afterPath)
+                this.downloadFile(beforeUrl, beforePath, 180000),
+                this.downloadFile(afterUrl, afterPath, 180000)
             ]);
 
             console.log(`✅ Downloads concluídos para ${jobId}`);
