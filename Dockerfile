@@ -1,29 +1,48 @@
-# Use Node.js 20 as the base image (required for Firebase)
-FROM node:20-alpine
+# ========================================
+# Stage 1: Builder
+# ========================================
+FROM node:20-alpine AS builder
 
-# Install FFmpeg and required dependencies
-RUN apk add --no-cache ffmpeg
-
-# Set the working directory
 WORKDIR /app
 
-# Copy package.json and package-lock.json (if available)
+# Copy package files first (optimize dependency cache)
 COPY package*.json ./
 
 # Install dependencies
-RUN npm install
+RUN npm ci --only=production
 
-# Copy the source code and credentials
-COPY src/ ./src/
-COPY credentials/ ./credentials/
-COPY assets/ ./assets/
+# Copy source code (always updated, no cache issues)
+COPY . .
 
-# Expose the port the app runs on
+# ========================================
+# Stage 2: Runtime
+# ========================================
+FROM node:20-alpine
+
+WORKDIR /app
+
+# Copy from builder (always fresh, no cache)
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/package*.json ./
+COPY --from=builder /app/src ./src
+COPY --from=builder /app/credentials ./credentials
+COPY --from=builder /app/assets ./assets
+
+# DEBUG: Verify files are copied and show hash
+RUN echo "=== DEBUG BUILD $(date) ===" > /app/BUILD_INFO.txt && \
+    ls -la /app/src/services/ >> /app/BUILD_INFO.txt && \
+    sha256sum /app/src/services/ffmpeg.service.js >> /app/BUILD_INFO.txt || echo "File not found" >> /app/BUILD_INFO.txt && \
+    grep -n "preset.*medium\|preset.*slow" /app/src/services/ffmpeg.service.js >> /app/BUILD_INFO.txt || echo "Preset not found" >> /app/BUILD_INFO.txt
+
+# Create necessary directories
+RUN mkdir -p temp/uploads temp/processing outputs/videos
+
+# Expose the port
 EXPOSE 8080
 
 # Set environment variables
 ENV NODE_ENV=production
 ENV PORT=8080
 
-# Command to run the application
+# Start the application
 CMD ["npm", "start"]

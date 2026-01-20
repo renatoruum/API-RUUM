@@ -16,7 +16,9 @@ NC='\033[0m' # No Color
 PROJECT_ID="api-ruum-project"
 SERVICE_NAME="apiruum"
 REGION="us-central1"
-IMAGE_NAME="us-central1-docker.pkg.dev/${PROJECT_ID}/apiruum-repo/${SERVICE_NAME}:latest"
+TIMESTAMP=$(date +%Y%m%d%H%M%S)
+IMAGE_NAME="us-central1-docker.pkg.dev/${PROJECT_ID}/apiruum-repo/${SERVICE_NAME}:v${TIMESTAMP}"
+IMAGE_LATEST="us-central1-docker.pkg.dev/${PROJECT_ID}/apiruum-repo/${SERVICE_NAME}:latest"
 
 echo -e "${BLUE}🚀 Iniciando deploy da API Ruum...${NC}"
 
@@ -76,13 +78,16 @@ done
 echo -e "${GREEN}✅ Todas as variáveis de ambiente encontradas${NC}"
 
 # 1. Build da imagem Docker
-echo -e "${YELLOW}🔨 Fazendo build da imagem Docker...${NC}"
-gcloud builds submit --tag "$IMAGE_NAME"
+echo -e "${YELLOW}🔨 Fazendo build da imagem Docker com multi-stage build...${NC}"
+gcloud builds submit --config=cloudbuild.yaml --substitutions=_IMAGE_NAME="$IMAGE_NAME"
 
 if [ $? -ne 0 ]; then
     echo -e "${RED}❌ Erro no build da imagem Docker${NC}"
     exit 1
 fi
+
+echo -e "${YELLOW}🏷️  Taggeando imagem como latest...${NC}"
+gcloud container images add-tag "$IMAGE_NAME" "$IMAGE_LATEST" --quiet
 
 echo -e "${GREEN}✅ Build da imagem concluído com sucesso${NC}"
 
@@ -95,7 +100,7 @@ gcloud run deploy "$SERVICE_NAME" \
   --port 8080 \
   --memory 2Gi \
   --cpu 2 \
-  --timeout 600 \
+  --timeout 300 \
   --set-env-vars "AIRTABLE_API_KEY=${AIRTABLE_API_KEY}" \
   --set-env-vars "AIRTABLE_BASE_ID=${AIRTABLE_BASE_ID}" \
   --set-env-vars "AIRTABLE_TABLE_NAME=${AIRTABLE_TABLE_NAME}" \

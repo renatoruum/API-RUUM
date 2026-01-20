@@ -610,7 +610,7 @@ export async function upsetImagesInAirtable(
     const baseInstance = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(process.env.AIRTABLE_BASE_ID);
     
     // Valores processados
-    const email = customEmail || (imagesArray[0]?.userEmail || 'email@default.com');
+    const email = customEmail || imagesArray[0]?.userEmail || null;
     const clientId = customClientId || (imagesArray[0]?.clientId || null);
     const invoiceId = customInvoiceId || (imagesArray[0]?.invoiceId || null);
     const userId = customUserId || (imagesArray[0]?.userId || null);
@@ -653,6 +653,161 @@ export async function upsetImagesInAirtable(
         } catch (error) {
             console.log(`⚠️ [validateRelationshipId] Erro ao validar ${recordId}: ${error.message}`);
             return false; // Em caso de erro, considerar inválido por segurança
+        }
+    };
+    
+    // 🔍 Função MELHORADA para buscar Record ID do cliente usando o campo Formula 'id'
+    const getClientRecordIdByFormulaId = async (clientFormulaId) => {
+        try {
+            console.log(`🔍 [getClientRecordIdByFormulaId] Buscando cliente com id (formula): ${clientFormulaId}`);
+            
+            // 🎯 NOVA ABORDAGEM: Buscar TODOS os registros e filtrar manualmente
+            // Porque filtros do Airtable podem não funcionar bem com campos Formula
+            console.log(`🔍 [getClientRecordIdByFormulaId] Buscando todos os clientes para comparação manual...`);
+            
+            const allClients = await baseInstance("Clients").select({
+                fields: ['id', 'name'] // Apenas campos necessários
+            }).all();
+            
+            console.log(`📊 [getClientRecordIdByFormulaId] Total de clientes encontrados: ${allClients.length}`);
+            
+            // Buscar manualmente o cliente com o id (Formula) correspondente
+            const matchingClient = allClients.find(record => {
+                const recordFormulaId = record.fields.id;
+                const matches = recordFormulaId === clientFormulaId;
+                if (matches) {
+                    console.log(`  - ✅ MATCH encontrado: "${recordFormulaId}" === "${clientFormulaId}"`);
+                }
+                return matches;
+            });
+            
+            if (matchingClient) {
+                const recordId = matchingClient.id; // Record ID REAL do Airtable
+                const clientName = matchingClient.fields.name || 'N/A';
+                
+                console.log(`✅ [getClientRecordIdByFormulaId] Cliente encontrado!`);
+                console.log(`  - Campo 'id' (Formula): ${clientFormulaId}`);
+                console.log(`  - Record ID (Airtable): ${recordId}`);
+                console.log(`  - Nome: ${clientName}`);
+                console.log(`  - 🎯 CONFIRMAÇÃO: Record ID ≠ Formula ID? ${recordId !== clientFormulaId ? 'SIM ✅' : 'NÃO ⚠️'}`);
+                
+                if (recordId === clientFormulaId) {
+                    console.warn(`⚠️ [getClientRecordIdByFormulaId] ATENÇÃO: Record ID é igual ao Formula ID!`);
+                    console.warn(`  - Isso pode indicar que a fórmula retorna o próprio Record ID`);
+                    console.warn(`  - Ou que este ID pertence à tabela errada`);
+                }
+                
+                return {
+                    success: true,
+                    recordId: recordId,
+                    clientName: clientName,
+                    formulaId: clientFormulaId
+                };
+            } else {
+                console.error(`❌ [getClientRecordIdByFormulaId] Cliente não encontrado com id: ${clientFormulaId}`);
+                console.error(`  - Nenhum registro tem campo 'id' (Formula) = "${clientFormulaId}"`);
+                console.error(`  - Total de clientes verificados: ${allClients.length}`);
+                
+                // 🔍 DEBUG: Mostrar os primeiros 5 valores de 'id' para comparação
+                console.error(`📊 [getClientRecordIdByFormulaId] Primeiros 5 valores de 'id' encontrados:`);
+                allClients.slice(0, 5).forEach((record, index) => {
+                    console.error(`  ${index + 1}. id="${record.fields.id}" | Record ID="${record.id}" | Nome="${record.fields.name}"`);
+                });
+                
+                return {
+                    success: false,
+                    recordId: null,
+                    error: `Cliente com id="${clientFormulaId}" não encontrado na tabela Clients`
+                };
+            }
+            
+        } catch (error) {
+            console.error(`❌ [getClientRecordIdByFormulaId] Erro ao buscar cliente: ${error.message}`);
+            console.error(`  - Erro completo:`, error);
+            return {
+                success: false,
+                recordId: null,
+                error: error.message
+            };
+        }
+    };
+    
+    // 🔍 Função melhorada para validar e diagnosticar se um ID pertence à tabela Clients
+    const validateClientId = async (recordId) => {
+        try {
+            console.log(`🔍 [validateClientId] Iniciando validação do ID: ${recordId}`);
+            
+            if (!recordId || !recordId.startsWith('rec') || recordId.length < 17) {
+                console.log(`⚠️ [validateClientId] ID inválido: ${recordId}`);
+                console.log(`  - Começa com 'rec': ${recordId?.startsWith('rec')}`);
+                console.log(`  - Comprimento >= 17: ${recordId?.length >= 17} (atual: ${recordId?.length})`);
+                return false;
+            }
+            
+            // 🎯 DIAGNÓSTICO: Tentar buscar em TODAS as tabelas para descobrir onde o ID realmente está
+            console.log(`🔍 [validateClientId] Verificando em quais tabelas o ID ${recordId} existe...`);
+            
+            const tablesToCheck = ['Clients', 'Users', 'Invoices', 'Styles'];
+            const foundInTables = [];
+            
+            for (const tableName of tablesToCheck) {
+                try {
+                    const record = await baseInstance(tableName).find(recordId);
+                    if (record) {
+                        foundInTables.push({
+                            table: tableName,
+                            recordId: record.id,
+                            fields: Object.keys(record.fields),
+                            name: record.fields.Name || record.fields['Client Name'] || record.fields['User Name'] || 'N/A'
+                        });
+                        console.log(`✅ [validateClientId] ID encontrado na tabela: ${tableName}`);
+                        console.log(`  - Nome: ${record.fields.Name || record.fields['Client Name'] || 'N/A'}`);
+                    }
+                } catch (error) {
+                    // Ignorar - ID não pertence a esta tabela
+                    console.log(`  - Não encontrado em: ${tableName}`);
+                }
+            }
+            
+            // 📊 RELATÓRIO DO DIAGNÓSTICO
+            console.log(`📊 [validateClientId] DIAGNÓSTICO COMPLETO DO ID ${recordId}:`);
+            console.log(`  - Encontrado em ${foundInTables.length} tabela(s)`);
+            
+            if (foundInTables.length === 0) {
+                console.error(`❌ [validateClientId] ID ${recordId} NÃO encontrado em nenhuma tabela!`);
+                console.error(`  - Isso pode indicar que:`);
+                console.error(`    1. O ID não existe mais no Airtable`);
+                console.error(`    2. O ID está em outra tabela não verificada`);
+                console.error(`    3. O valor é do campo Formula 'id' ao invés do Record ID`);
+                return false;
+            }
+            
+            if (foundInTables.length > 1) {
+                console.warn(`⚠️ [validateClientId] ID ${recordId} encontrado em MÚLTIPLAS tabelas:`);
+                foundInTables.forEach(info => {
+                    console.warn(`  - ${info.table}: "${info.name}"`);
+                });
+            }
+            
+            // Verificar se está na tabela Clients
+            const foundInClients = foundInTables.find(info => info.table === 'Clients');
+            
+            if (foundInClients) {
+                console.log(`✅ [validateClientId] ID ${recordId} pertence à tabela Clients`);
+                console.log(`  - Nome do cliente: ${foundInClients.name}`);
+                console.log(`  - Campos disponíveis: ${foundInClients.fields.join(', ')}`);
+                return true;
+            } else {
+                console.error(`❌ [validateClientId] ID ${recordId} NÃO pertence à tabela Clients`);
+                console.error(`  - Tabelas onde foi encontrado: ${foundInTables.map(i => i.table).join(', ')}`);
+                console.error(`  - Este ID deve ser removido do campo 'Clients' para evitar erro`);
+                return false;
+            }
+            
+        } catch (error) {
+            console.error(`❌ [validateClientId] Erro ao validar ID ${recordId}:`, error.message);
+            console.error(`  - Erro completo:`, error);
+            return false;
         }
     };
     
@@ -708,10 +863,14 @@ export async function upsetImagesInAirtable(
             const fields = {
                 ["Property's URL"]: baseImg.propertyUrl || '',
                 ["INPUT IMAGE"]: uniqueImageUrls.map(url => ({ url })), // TODAS as imagens em um só campo
-                ["Owner Email"]: email,
                 ["Client Internal Code"]: baseImg.codigo || '',
                 Message: baseImg.observacoes || '',
             };
+            
+            // Adicionar Owner Email apenas se houver um email válido
+            if (email && email.trim() !== '') {
+                fields["Owner Email"] = email;
+            }
             
             console.log("🔨 [upsetImagesInAirtable] Campos básicos criados:", {
                 propertyUrl: fields["Property's URL"],
@@ -723,8 +882,25 @@ export async function upsetImagesInAirtable(
             
             // Relacionamentos condicionais
             if (clientId && clientId.trim() !== '') {
-                fields.Clients = [clientId];
-                console.log("🔗 [upsetImagesInAirtable] Adicionado relacionamento Clients:", clientId);
+                console.log(`🔍 [upsetImagesInAirtable] Processando clientId para Image suggestions: ${clientId}`);
+                console.log(`  - Este valor pode ser do campo Formula 'id', não o Record ID`);
+                console.log(`  - Buscando Record ID real correspondente...`);
+                
+                // 🎯 BUSCAR O RECORD ID REAL USANDO O CAMPO FORMULA 'id'
+                const clientLookup = await getClientRecordIdByFormulaId(clientId);
+                
+                if (clientLookup.success && clientLookup.recordId) {
+                    fields.client = [clientLookup.recordId];
+                    console.log("🔗 [upsetImagesInAirtable] Adicionado relacionamento client:");
+                    console.log(`  - Campo Formula 'id' fornecido: ${clientId}`);
+                    console.log(`  - Record ID usado: ${clientLookup.recordId}`);
+                    console.log(`  - Nome do cliente: ${clientLookup.clientName}`);
+                } else {
+                    console.log(`❌ [upsetImagesInAirtable] Cliente não encontrado - campo client NÃO será preenchido`);
+                    console.log(`  - Campo 'id' buscado: ${clientId}`);
+                    console.log(`  - Erro: ${clientLookup.error}`);
+                    console.log(`💡 [upsetImagesInAirtable] Verifique se o cliente com id="${clientId}" existe na tabela Clients`);
+                }
             }
             
             if (encodedUrl) {
@@ -778,6 +954,15 @@ export async function upsetImagesInAirtable(
             if (suggestionstatus) {
                 fields["Suggestion Status"] = suggestionstatus;
                 console.log("  - Suggestion Status:", suggestionstatus);
+            }
+            
+            // Image Workflow
+            const imageWorkflow = getSelectValue(baseImg.imgWorkflow);
+            if (imageWorkflow) {
+                // Mapear valores: Atelier -> Boutique workflow, outros -> Imob workflow
+                const workflowValue = imageWorkflow === 'Atelier' ? 'Boutique workflow' : 'Imob workflow';
+                fields["Image_workflow"] = workflowValue;
+                console.log("  - Image_workflow:", workflowValue, `(original: ${imageWorkflow})`);
             }
             
             // Destaques
@@ -1327,7 +1512,7 @@ export async function saveProcessedFluxImage(processedImageData) {
         
         // Campo output_img como Attachment - imagem processada pelo FLUX
         fields.output_img = [{ url: processedImageData.output_image_url }];
-        
+
         console.log("  - output_img (FLUX):", processedImageData.output_image_url.substring(0, 50) + "...");
         
         // Campo input_img (opcional) - imagem do Virtual Staging
@@ -1793,7 +1978,7 @@ export async function upsetVideosInAirtable(
     const tableName = "Videos";
     
     // Valores processados - VERIFICAR SE OS VALORES ESTÃO CHEGANDO
-    const email = customEmail || (videosArray[0]?.userEmail || 'email@default.com');
+    const email = customEmail || (videosArray[0]?.userEmail || '');
     const clientId = customClientId || (videosArray[0]?.clientId || null);
     const invoiceId = customInvoiceId || (videosArray[0]?.invoiceId || null);
     const userId = customUserId || (videosArray[0]?.userId || null);

@@ -1,0 +1,13 @@
+steps:
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'build'
+      - '--no-cache'
+      - '--pull'
+      - '-t'
+      - '${_IMAGE_NAME}'
+      - '.'
+images:
+  - '${_IMAGE_NAME}'
+substitutions:
+  _IMAGE_NAME: 'us-central1-docker.pkg.dev/api-ruum-project/apiruum-repo/apiruum:latest'
