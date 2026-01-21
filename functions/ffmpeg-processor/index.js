@@ -1,0 +1,767 @@
+const functions = require('@google-cloud/functions-framework');
+const { spawn } = require('child_process');
+const { Storage } = require('@google-cloud/storage');
+const axios = require('axios');
+const path = require('path');
+const fs = require('fs');
+const { v4: uuidv4 } = require('uuid');
+
+const storage = new Storage();
+const BUCKET_NAME = process.env.FIREBASE_STORAGE_BUCKET || 'api-ruum.firebasestorage.app';
+
+/**
+ * Endpoint principal que roteia para processBeforeAfter ou mergeVideos
+ * baseado no query parameter ?action=
+ */
+functions.http('processVideo', async (req, res) => {
+  // CORS headers
+  res.set('Access-Control-Allow-Origin', '*');
+  res.set('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.set('Access-Control-Allow-Headers', 'Content-Type');
+
+  if (req.method === 'OPTIONS') {
+    return res.status(204).send('');
+  }
+
+  // Ler action do query parameter
+  const action = req.query.action || 'processBeforeAfter';
+
+  console.log(`📞 Endpoint chamado: ${action}`);
+
+  if (action === 'mergeVideos') {
+    return await mergeVideosHandler(req, res);
+  } else if (action === 'processBeforeAfter') {
+    return await processBeforeAfterHandler(req, res);
+  } else {
+    return res.status(400).json({
+      success: false,
+      error: `Action inválida: ${action}. Use 'processBeforeAfter' ou 'mergeVideos'`
+    });
+  }
+});
+
+/**
+ * Handler para processar vídeos before/after com FFmpeg
+ * Otimizado para alta qualidade e confiabilidade
+ */
+async function processBeforeAfterHandler(req, res) {
+
+  const startTime = Date.now();
+  const { beforeUrl, afterUrl, clientName, duration = 8, quality = 'high', orientation = 'horizontal' } = req.body;
+
+  // Validação de entrada
+  if (!beforeUrl || !afterUrl) {
+    return res.status(400).json({
+      success: false,
+      error: 'beforeUrl e afterUrl são obrigatórios'
+    });
+  }
+
+  // Validar orientação
+  if (!['horizontal', 'vertical'].includes(orientation)) {
+    return res.status(400).json({
+      success: false,
+      error: 'orientation deve ser "horizontal" ou "vertical"'
+    });
+  }
+
+  if (!clientName || !clientName.trim()) {
+    return res.status(400).json({
+      success: false,
+      error: 'clientName é obrigatório'
+    });
+  }
+
+  const jobId = uuidv4();
+  const tmpDir = '/tmp';
+  
+  const beforePath = path.join(tmpDir, `${jobId}-before.jpg`);
+  const afterPath = path.join(tmpDir, `${jobId}-after.jpg`);
+  
+  // Selecionar máscara baseada na orientação
+  const maskFileName = orientation === 'vertical' 
+    ? 'before_after_mask_vertical.mp4' 
+    : 'before_after_mask.mp4';
+  const maskPath = path.join(__dirname, 'assets', maskFileName);
+  const outputPath = path.join(tmpDir, `${jobId}-output.mp4`);
+
+  console.log(`🎬 [${jobId}] Iniciando processamento FFmpeg`);
+  console.log(`   Before: ${beforeUrl.substring(0, 80)}...`);
+  console.log(`   After: ${afterUrl.substring(0, 80)}...`);
+  console.log(`   Cliente: ${clientName}`);
+  console.log(`   Orientação: ${orientation}`);
+  console.log(`   Máscara: ${maskFileName}`);
+  console.log(`   Qualidade: ${quality}`);
+
+  try {
+    // 1. Download das imagens
+    console.log(`📥 [${jobId}] Baixando imagens...`);
+    const downloadStart = Date.now();
+    
+    await Promise.all([
+      downloadFile(beforeUrl, beforePath),
+      downloadFile(afterUrl, afterPath)
+    ]);
+    
+    console.log(`✅ [${jobId}] Download concluído em ${Date.now() - downloadStart}ms`);
+    
+    // Validar arquivos baixados
+    validateFile(beforePath, 'before');
+    validateFile(afterPath, 'after');
+    
+    // Verificar se máscara existe
+    if (!fs.existsSync(maskPath)) {
+      throw new Error(`Máscara não encontrada: ${maskPath}`);
+    }
+    validateFile(maskPath, 'mask');
+
+    // 2. Processar vídeo com FFmpeg
+    console.log(`🎥 [${jobId}] Processando vídeo com FFmpeg...`);
+    const ffmpegStart = Date.now();
+    
+    await runFFmpeg(beforePath, afterPath, maskPath, outputPath, duration, quality, orientation, jobId);
+    
+    const ffmpegDuration = Date.now() - ffmpegStart;
+    console.log(`✅ [${jobId}] FFmpeg concluído em ${ffmpegDuration}ms`);
+
+    // Verificar vídeo gerado
+    const outputStats = fs.statSync(outputPath);
+    const outputSizeMB = (outputStats.size / (1024 * 1024)).toFixed(2);
+    console.log(`📦 [${jobId}] Vídeo gerado: ${outputSizeMB} MB`);
+
+    // 3. Upload para Firebase Storage
+    console.log(`☁️  [${jobId}] Fazendo upload para Firebase...`);
+    const uploadStart = Date.now();
+    
+    const destination = `videos/${clientName.trim()}/${jobId}.mp4`;
+    await storage.bucket(BUCKET_NAME).upload(outputPath, {
+      destination,
+      metadata: {
+        contentType: 'video/mp4',
+        metadata: {
+          jobId,
+          clientName: clientName.trim(),
+          duration: duration.toString(),
+          quality,
+          processedAt: new Date().toISOString()
+        }
+      }
+    });
+
+    // Gerar URL assinada válida por 7 dias
+    const file = storage.bucket(BUCKET_NAME).file(destination);
+    const [signedUrl] = await file.getSignedUrl({
+      action: 'read',
+      expires: Date.now() + 7 * 24 * 60 * 60 * 1000 // 7 dias
+    });
+    
+    console.log(`✅ [${jobId}] Upload concluído em ${Date.now() - uploadStart}ms`);
+
+    // 4. Cleanup
+    [beforePath, afterPath, outputPath].forEach(file => {
+      try {
+        if (fs.existsSync(file)) {
+          fs.unlinkSync(file);
+        }
+      } catch (err) {
+        console.warn(`⚠️  [${jobId}] Erro ao limpar ${file}:`, err.message);
+      }
+    });
+
+    const totalDuration = Date.now() - startTime;
+    console.log(`🎉 [${jobId}] Processamento completo em ${totalDuration}ms`);
+    console.log(`   URL: ${signedUrl}`);
+
+    // Resposta de sucesso
+    res.json({
+      success: true,
+      jobId,
+      url: signedUrl,
+      metadata: {
+        duration: totalDuration,
+        videoSizeMB: parseFloat(outputSizeMB),
+        quality,
+        clientName: clientName.trim()
+      }
+    });
+
+  } catch (error) {
+    console.error(`❌ [${jobId}] Erro no processamento:`, error);
+    
+    // Cleanup em caso de erro
+    [beforePath, afterPath, outputPath].forEach(file => {
+      try {
+        if (fs.existsSync(file)) fs.unlinkSync(file);
+      } catch {}
+    });
+
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      jobId
+    });
+  }
+}
+
+/**
+ * Download de arquivo com timeout e retry
+ */
+async function downloadFile(url, dest, retries = 3) {
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      const response = await axios({
+        method: 'GET',
+        url,
+        responseType: 'stream',
+        timeout: 60000, // 60s timeout
+        maxRedirects: 5
+      });
+
+      const writer = fs.createWriteStream(dest);
+      response.data.pipe(writer);
+
+      return new Promise((resolve, reject) => {
+        writer.on('finish', resolve);
+        writer.on('error', reject);
+      });
+
+    } catch (error) {
+      console.warn(`⚠️  Download falhou (tentativa ${attempt}/${retries}):`, error.message);
+      
+      if (attempt === retries) {
+        throw new Error(`Falha ao baixar após ${retries} tentativas: ${error.message}`);
+      }
+      
+      // Aguarda antes de retry (exponential backoff)
+      await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+    }
+  }
+}
+
+/**
+ * Validar arquivo baixado
+ */
+function validateFile(filePath, name) {
+  if (!fs.existsSync(filePath)) {
+    throw new Error(`Arquivo ${name} não encontrado: ${filePath}`);
+  }
+
+  const stats = fs.statSync(filePath);
+  const sizeMB = (stats.size / (1024 * 1024)).toFixed(2);
+  
+  if (stats.size === 0) {
+    throw new Error(`Arquivo ${name} está vazio`);
+  }
+
+  console.log(`  ✓ ${name}: ${sizeMB} MB`);
+}
+
+/**
+ * Executar FFmpeg com before/after mask
+ */
+function runFFmpeg(beforePath, afterPath, maskPath, outputPath, duration, quality, orientation, jobId) {
+  return new Promise((resolve, reject) => {
+    // Configurações de qualidade
+    const qualityPresets = {
+      low: { crf: 28, preset: 'veryfast' },
+      medium: { crf: 23, preset: 'medium' },
+      high: { crf: 18, preset: 'medium' },
+      ultra: { crf: 15, preset: 'slow' }
+    };
+
+    const { crf, preset } = qualityPresets[quality] || qualityPresets.high;
+    
+    // Configurações de resolução baseadas na orientação
+    const isVertical = orientation === 'vertical';
+    const width = isVertical ? 1080 : 1280;
+    const height = isVertical ? 1920 : 720;
+    const fps = isVertical ? 60 : 25;
+
+    console.log(`📐 [${jobId}] Resolução: ${width}x${height} @ ${fps}fps`);
+
+    // Filtro complexo para before/after com máscara
+    // Usar scale com force_original_aspect_ratio e crop para preencher sem margens
+    const complexFilter = [
+      `[0:v]scale=${width}:${height}:force_original_aspect_ratio=increase,crop=${width}:${height}:(iw-ow)/2:(ih-oh)/2,setsar=1[before]`,
+      `[1:v]scale=${width}:${height}:force_original_aspect_ratio=increase,crop=${width}:${height}:(iw-ow)/2:(ih-oh)/2,setsar=1[after]`,
+      `[2:v]scale=${width}:${height}:force_original_aspect_ratio=increase,crop=${width}:${height}:(iw-ow)/2:(ih-oh)/2,setsar=1[mask]`,
+      `[after][mask]alphamerge[top]`,
+      `[before][top]overlay=0:0,setsar=1[final]`
+    ].join(';');
+
+    // Argumentos FFmpeg otimizados para Cloud Functions
+    const args = [
+      '-nostdin',           // CRÍTICO: não esperar stdin
+      '-y',                 // CRÍTICO: sobrescrever sem confirmar
+      '-loglevel', 'info',  // Logs detalhados
+      
+      // Input 0: before (loop)
+      '-loop', '1',
+      '-t', duration.toString(),
+      '-framerate', fps.toString(),
+      '-i', beforePath,
+      
+      // Input 1: after (loop)
+      '-loop', '1',
+      '-t', duration.toString(),
+      '-framerate', fps.toString(),
+      '-i', afterPath,
+      
+      // Input 2: mask
+      '-i', maskPath,
+      
+      // Filtro complexo
+      '-filter_complex', complexFilter,
+      
+      // Output options
+      '-map', '[final]',
+      '-c:v', 'libx264',
+      '-preset', preset,
+      '-crf', crf.toString(),
+      '-pix_fmt', 'yuv420p',
+      '-t', duration.toString(),
+      '-movflags', '+faststart',
+      
+      outputPath
+    ];
+
+    console.log(`📝 [${jobId}] FFmpeg command: ffmpeg ${args.join(' ')}`);
+
+    const ffmpeg = spawn('ffmpeg', args);
+    
+    let stderrOutput = '';
+    let lastProgress = '';
+
+    // Capturar stderr (onde FFmpeg envia progresso)
+    ffmpeg.stderr.on('data', (data) => {
+      const output = data.toString();
+      stderrOutput += output;
+      
+      // Log de progresso
+      const frameMatch = output.match(/frame=\s*(\d+)/);
+      const timeMatch = output.match(/time=(\S+)/);
+      
+      if (frameMatch && timeMatch) {
+        const progress = `frame=${frameMatch[1]} time=${timeMatch[1]}`;
+        if (progress !== lastProgress) {
+          console.log(`  📊 [${jobId}] ${progress}`);
+          lastProgress = progress;
+        }
+      }
+    });
+
+    // Processo concluído
+    ffmpeg.on('close', (code) => {
+      if (code === 0) {
+        console.log(`✅ [${jobId}] FFmpeg finalizou com sucesso (exit code 0)`);
+        resolve();
+      } else {
+        const error = new Error(`FFmpeg falhou com exit code ${code}`);
+        console.error(`❌ [${jobId}] FFmpeg stderr:`, stderrOutput);
+        reject(error);
+      }
+    });
+
+    // Erro ao spawnar processo
+    ffmpeg.on('error', (err) => {
+      console.error(`❌ [${jobId}] Erro ao iniciar FFmpeg:`, err);
+      reject(err);
+    });
+
+    // Timeout de segurança (5 minutos)
+    setTimeout(() => {
+      ffmpeg.kill('SIGKILL');
+      reject(new Error('FFmpeg timeout após 5 minutos'));
+    }, 5 * 60 * 1000);
+  });
+}
+
+/**
+ * Handler para fazer merge de 2 vídeos
+ * Concatena Before/After + Camera Magic em um único MP4
+ */
+async function mergeVideosHandler(req, res) {
+
+  const startTime = Date.now();
+  const { video1Url, video2Url, clientName, quality = 'high', outputOrientation = 'horizontal' } = req.body;
+
+  // Validação de entrada
+  if (!video1Url || !video2Url) {
+    return res.status(400).json({
+      success: false,
+      error: 'video1Url e video2Url são obrigatórios'
+    });
+  }
+
+  if (!clientName || !clientName.trim()) {
+    return res.status(400).json({
+      success: false,
+      error: 'clientName é obrigatório'
+    });
+  }
+
+  const jobId = uuidv4();
+  const tmpDir = '/tmp';
+  
+  const video1Path = path.join(tmpDir, `${jobId}-video1.mp4`);
+  const video2Path = path.join(tmpDir, `${jobId}-video2.mp4`);
+  const outputPath = path.join(tmpDir, `${jobId}-merged.mp4`);
+
+  console.log(`🎞️  [${jobId}] Iniciando merge de vídeos`);
+  console.log(`   Vídeo 1: ${video1Url.substring(0, 80)}...`);
+  console.log(`   Vídeo 2: ${video2Url.substring(0, 80)}...`);
+  console.log(`   Cliente: ${clientName}`);
+  console.log(`   Qualidade: ${quality}`);
+  console.log(`   Orientação de Saída: ${outputOrientation}`);
+
+  try {
+    // 1. Download dos 2 vídeos em paralelo
+    console.log(`📥 [${jobId}] Baixando vídeos...`);
+    const downloadStart = Date.now();
+    
+    await Promise.all([
+      downloadFile(video1Url, video1Path),
+      downloadFile(video2Url, video2Path)
+    ]);
+    
+    console.log(`✅ [${jobId}] Download concluído em ${Date.now() - downloadStart}ms`);
+    
+    // Validar vídeos baixados
+    validateFile(video1Path, 'video 1');
+    validateFile(video2Path, 'video 2');
+
+    // 2. Concatenar vídeos com FFmpeg
+    console.log(`🎬 [${jobId}] Concatenando vídeos...`);
+    const mergeStart = Date.now();
+    
+    await concatenateVideos(video1Path, video2Path, outputPath, quality, outputOrientation, jobId);
+    
+    const mergeDuration = Date.now() - mergeStart;
+    console.log(`✅ [${jobId}] Merge concluído em ${mergeDuration}ms`);
+
+    // 2.5 Verificar resolução final (já normalizada no concat)
+    // ❌ LETTERBOX REMOVIDO: merge já normaliza para resolução correta
+    let finalOutputPath = outputPath;
+    let outputSizeMB = '0';
+    
+    const outputStats = fs.statSync(outputPath);
+    outputSizeMB = (outputStats.size / (1024 * 1024)).toFixed(2);
+    
+    if (outputOrientation === 'vertical') {
+      console.log(`📦 [${jobId}] Vídeo mesclado VERTICAL: ${outputSizeMB} MB (1080x1920 - normalizado no concat)`);
+    } else {
+      console.log(`📦 [${jobId}] Vídeo mesclado HORIZONTAL: ${outputSizeMB} MB (1280x720 - normalizado no concat)`);
+    }
+
+    // 3. Upload para Firebase Storage
+    console.log(`☁️  [${jobId}] Fazendo upload para Firebase...`);
+    const uploadStart = Date.now();
+    
+    const destination = `videos/${clientName.trim()}/${jobId}-merged.mp4`;
+    await storage.bucket(BUCKET_NAME).upload(finalOutputPath, {
+      destination,
+      metadata: {
+        contentType: 'video/mp4',
+        metadata: {
+          jobId,
+          type: 'merged',
+          clientName: clientName.trim(),
+          quality,
+          processedAt: new Date().toISOString()
+        }
+      }
+    });
+
+    // Gerar URL assinada válida por 7 dias
+    const file = storage.bucket(BUCKET_NAME).file(destination);
+    const [signedUrl] = await file.getSignedUrl({
+      action: 'read',
+      expires: Date.now() + 7 * 24 * 60 * 60 * 1000
+    });
+    
+    console.log(`✅ [${jobId}] Upload concluído em ${Date.now() - uploadStart}ms`);
+
+    // 4. Cleanup
+    [video1Path, video2Path, finalOutputPath].forEach(file => {
+      try {
+        if (fs.existsSync(file)) {
+          fs.unlinkSync(file);
+        }
+      } catch (err) {
+        console.warn(`⚠️  [${jobId}] Erro ao limpar ${file}:`, err.message);
+      }
+    });
+
+    const totalDuration = Date.now() - startTime;
+    console.log(`🎉 [${jobId}] Merge completo em ${totalDuration}ms`);
+    console.log(`   URL: ${signedUrl}`);
+
+    // Resposta de sucesso
+    res.json({
+      success: true,
+      jobId,
+      url: signedUrl,
+      metadata: {
+        duration: totalDuration,
+        videoSizeMB: parseFloat(outputSizeMB),
+        quality,
+        type: 'merged',
+        clientName: clientName.trim(),
+        breakdown: {
+          downloadMs: Date.now() - downloadStart,
+          mergeMs: mergeDuration,
+          uploadMs: Date.now() - uploadStart
+        }
+      }
+    });
+
+  } catch (error) {
+    console.error(`❌ [${jobId}] Erro no merge:`, error);
+    
+    // Cleanup em caso de erro
+    [video1Path, video2Path, outputPath].forEach(file => {
+      try {
+        if (fs.existsSync(file)) fs.unlinkSync(file);
+      } catch {}
+    });
+
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      jobId
+    });
+  }
+}
+
+/**
+ * Adiciona letterbox (barras pretas) para converter vídeo 1280x720 → 1080x1920
+ * Mantém vídeo centralizado sem distorção
+ */
+function addLetterboxToVertical(inputPath, outputPath, jobId) {
+  return new Promise((resolve, reject) => {
+    const args = [
+      '-nostdin',
+      '-y',
+      '-loglevel', 'info',
+      '-i', inputPath,
+      
+      // Filtro: adiciona barras pretas (letterbox) nas laterais
+      // 1. Mantém altura original (720)
+      // 2. Calcula largura proporcional para 9:16 (720 * 9/16 = 405)
+      // 3. Pad (preenche) com barras pretas até 1080x1920
+      '-vf', 'scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2:color=black',
+      
+      '-c:v', 'libx264',
+      '-preset', 'medium',
+      '-crf', '18',
+      '-pix_fmt', 'yuv420p',
+      '-movflags', '+faststart',
+      
+      outputPath
+    ];
+
+    console.log(`📱 [${jobId}] Aplicando letterbox vertical...`);
+
+    const ffmpeg = spawn('ffmpeg', args);
+    let stderrOutput = '';
+
+    ffmpeg.stderr.on('data', (data) => {
+      stderrOutput += data.toString();
+    });
+
+    ffmpeg.on('close', (code) => {
+      if (code === 0) {
+        console.log(`✅ [${jobId}] Letterbox aplicado com sucesso`);
+        resolve();
+      } else {
+        const error = new Error(`Letterbox falhou com exit code ${code}`);
+        console.error(`❌ [${jobId}] Letterbox stderr:`, stderrOutput);
+        reject(error);
+      }
+    });
+
+    ffmpeg.on('error', (err) => {
+      console.error(`❌ [${jobId}] Erro ao aplicar letterbox:`, err);
+      reject(err);
+    });
+
+    setTimeout(() => {
+      ffmpeg.kill('SIGKILL');
+      reject(new Error('Letterbox timeout após 5 minutos'));
+    }, 5 * 60 * 1000);
+  });
+}
+
+/**
+ * Concatena 2 vídeos usando FFmpeg
+ * Usa filter concat para juntar os vídeos sequencialmente
+ */
+function concatenateVideos(video1Path, video2Path, outputPath, quality, orientation, jobId) {
+  return new Promise(async (resolve, reject) => {
+    console.log(`\n🔍 [${jobId}] ===== DEBUG MERGE INICIADO =====`);
+    console.log(`📹 [${jobId}] Vídeo 1: ${video1Path}`);
+    console.log(`📹 [${jobId}] Vídeo 2: ${video2Path}`);
+    console.log(`📐 [${jobId}] Orientação: ${orientation}`);
+    console.log(`⚙️ [${jobId}] Qualidade: ${quality}`);
+
+    // 🔍 PROBE: Obter metadados dos vídeos de entrada
+    try {
+      const probe1 = await new Promise((res, rej) => {
+        ffmpeg.ffprobe(video1Path, (err, metadata) => {
+          if (err) rej(err);
+          else res(metadata);
+        });
+      });
+      
+      const probe2 = await new Promise((res, rej) => {
+        ffmpeg.ffprobe(video2Path, (err, metadata) => {
+          if (err) rej(err);
+          else res(metadata);
+        });
+      });
+
+      const video1Stream = probe1.streams.find(s => s.codec_type === 'video');
+      const video2Stream = probe2.streams.find(s => s.codec_type === 'video');
+
+      console.log(`\n📊 [${jobId}] VÍDEO 1 (Before/After):`);
+      console.log(`   Resolução: ${video1Stream.width}x${video1Stream.height}`);
+      console.log(`   Codec: ${video1Stream.codec_name}`);
+      console.log(`   Pixel Format: ${video1Stream.pix_fmt}`);
+      console.log(`   FPS: ${eval(video1Stream.r_frame_rate)}`);
+      console.log(`   Aspect Ratio: ${video1Stream.display_aspect_ratio || 'N/A'}`);
+      console.log(`   SAR: ${video1Stream.sample_aspect_ratio || '1:1'}`);
+      console.log(`   Duration: ${video1Stream.duration}s`);
+
+      console.log(`\n📊 [${jobId}] VÍDEO 2 (Camera Magic):`);
+      console.log(`   Resolução: ${video2Stream.width}x${video2Stream.height}`);
+      console.log(`   Codec: ${video2Stream.codec_name}`);
+      console.log(`   Pixel Format: ${video2Stream.pix_fmt}`);
+      console.log(`   FPS: ${eval(video2Stream.r_frame_rate)}`);
+      console.log(`   Aspect Ratio: ${video2Stream.display_aspect_ratio || 'N/A'}`);
+      console.log(`   SAR: ${video2Stream.sample_aspect_ratio || '1:1'}`);
+      console.log(`   Duration: ${video2Stream.duration}s`);
+    } catch (probeError) {
+      console.error(`⚠️ [${jobId}] Erro ao obter metadados (continuando...):`, probeError.message);
+    }
+
+    // Configurações de qualidade
+    const qualityPresets = {
+      low: { crf: 28, preset: 'veryfast' },
+      medium: { crf: 23, preset: 'medium' },
+      high: { crf: 18, preset: 'medium' },
+      ultra: { crf: 15, preset: 'slow' }
+    };
+
+    const { crf, preset } = qualityPresets[quality] || qualityPresets.high;
+
+    // ✅ Filtro concat com NORMALIZAÇÃO DE RESOLUÇÃO - SIMPLIFICADO
+    // Usar scale sem padding (mais eficiente e evita erros)
+    
+    let filterComplex;
+    
+    if (orientation === 'vertical') {
+      // Vertical: escalar ambos para 1080x1920
+      filterComplex = 
+        '[0:v]fps=25,scale=1080:1920,setsar=1[v0];' +
+        '[1:v]fps=25,scale=1080:1920,setsar=1[v1];' +
+        '[v0][v1]concat=n=2:v=1:a=0[outv]';
+      console.log(`\n📐 [${jobId}] Merge VERTICAL: normalizando ambos para 1080x1920 + concat`);
+      console.log(`🔧 [${jobId}] Filter Complex: ${filterComplex}`);
+    } else {
+      // Horizontal: escalar ambos para 1280x720
+      filterComplex = 
+        '[0:v]fps=25,scale=1280:720,setsar=1[v0];' +
+        '[1:v]fps=25,scale=1280:720,setsar=1[v1];' +
+        '[v0][v1]concat=n=2:v=1:a=0[outv]';
+      console.log(`\n📐 [${jobId}] Merge HORIZONTAL: normalizando ambos para 1280x720 + concat`);
+      console.log(`🔧 [${jobId}] Filter Complex: ${filterComplex}`);
+    }
+
+    // Argumentos FFmpeg para concatenação
+    const args = [
+      '-nostdin',
+      '-y',
+      '-loglevel', 'info',
+      
+      // Input 0: Primeiro vídeo (Before/After)
+      '-i', video1Path,
+      
+      // Input 1: Segundo vídeo (Camera Magic)
+      '-i', video2Path,
+      
+      // Filtro concat simples: normaliza FPS para 25 e concatena
+      '-filter_complex', filterComplex,
+      
+      // Map do output
+      '-map', '[outv]',
+      
+      // Encoding options
+      '-c:v', 'libx264',
+      '-preset', preset,
+      '-crf', crf.toString(),
+      '-pix_fmt', 'yuv420p',
+      '-movflags', '+faststart',
+      
+      outputPath
+    ];
+
+    console.log(`\n📝 [${jobId}] ===== COMANDO FFMPEG COMPLETO =====`);
+    console.log(`ffmpeg ${args.join(' ')}`);
+    console.log(`======================================\n`);
+
+    const ffmpeg = spawn('ffmpeg', args);
+    
+    let stderrOutput = '';
+    let lastProgress = '';
+
+    // Capturar stderr (progresso + erros)
+    ffmpeg.stderr.on('data', (data) => {
+      const output = data.toString();
+      stderrOutput += output;
+      
+      // Log completo do stderr para debug
+      console.log(`[FFmpeg Output] ${output.trim()}`);
+      
+      // Log de progresso
+      const frameMatch = output.match(/frame=\s*(\d+)/);
+      const timeMatch = output.match(/time=(\S+)/);
+      
+      if (frameMatch && timeMatch) {
+        const progress = `frame=${frameMatch[1]} time=${timeMatch[1]}`;
+        if (progress !== lastProgress) {
+          console.log(`  📊 [${jobId}] Merge: ${progress}`);
+          lastProgress = progress;
+        }
+      }
+    });
+
+    // Processo concluído
+    ffmpeg.on('close', (code) => {
+      if (code === 0) {
+        console.log(`\n✅ [${jobId}] FFmpeg merge finalizou com sucesso (exit code 0)`);
+        console.log(`📦 [${jobId}] Output: ${outputPath}`);
+        resolve();
+      } else {
+        console.error(`\n❌ [${jobId}] FFmpeg merge falhou com exit code ${code}`);
+        console.error(`📋 [${jobId}] ===== STDERR COMPLETO =====`);
+        console.error(stderrOutput);
+        console.error(`====================================\n`);
+        const error = new Error(`FFmpeg merge falhou com exit code ${code}`);
+        error.stderr = stderrOutput;
+        reject(error);
+      }
+    });
+
+    // Erro ao spawnar processo
+    ffmpeg.on('error', (err) => {
+      console.error(`❌ [${jobId}] Erro ao iniciar FFmpeg merge:`, err);
+      reject(err);
+    });
+
+    // Timeout de segurança (10 minutos para merge)
+    setTimeout(() => {
+      ffmpeg.kill('SIGKILL');
+      reject(new Error('FFmpeg merge timeout após 10 minutos'));
+    }, 10 * 60 * 1000);
+  });
+}

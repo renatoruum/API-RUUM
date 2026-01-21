@@ -1,0 +1,39 @@
+# Arquivo .gcloudignore para Cloud Functions
+# Previne upload de arquivos desnecessários
+
+# Node
+node_modules/
+npm-debug.log
+yarn-error.log
+package-lock.json
+
+# Git
+.git/
+.gitignore
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Tests
+test/
+tests/
+*.test.js
+*.spec.js
+coverage/
+
+# Documentação
+README.md
+docs/
+
+# Outros
+.env
+.env.local
+*.log
