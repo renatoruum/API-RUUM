@@ -23,6 +23,7 @@ import firebaseStorageRoutes from "./routes/firebaseStorage.js";
 import firebaseUploadRoutes from "./routes/firebaseUpload.js";
 import sendFluxRoute from "./routes/sendFlux.js";
 import sendImagePipelineRoute from "./routes/sendImagePipeline.js";
+import sendPixverseRoute from "./routes/sendPixverse.js";
 
 const app = express();
 app.use(cors());
@@ -96,6 +97,7 @@ app.use("/api", gaiaWebhookRoute);
 app.use("/api", firebaseRoutes);
 app.use("/api", sendFluxRoute);
 app.use("/api", sendImagePipelineRoute);
+app.use("/api", sendPixverseRoute);
 
 // Rota de teste para upload de imagem local para o Storage
 app.use("/api", firebaseStorageRoutes);
