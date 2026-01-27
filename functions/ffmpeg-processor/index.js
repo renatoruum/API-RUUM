@@ -383,7 +383,15 @@ function runFFmpeg(beforePath, afterPath, maskPath, outputPath, duration, qualit
 async function mergeVideosHandler(req, res) {
 
   const startTime = Date.now();
-  const { video1Url, video2Url, clientName, quality = 'high', outputOrientation = 'horizontal' } = req.body;
+  const { 
+    video1Url, 
+    video2Url, 
+    clientName, 
+    quality = 'high', 
+    outputOrientation = 'horizontal',
+    transition = 'concat',           // 'concat' ou 'crossfade'
+    transitionDuration = 0.5         // duração em segundos do crossfade
+  } = req.body;
 
   // Validação de entrada
   if (!video1Url || !video2Url) {
@@ -413,6 +421,7 @@ async function mergeVideosHandler(req, res) {
   console.log(`   Cliente: ${clientName}`);
   console.log(`   Qualidade: ${quality}`);
   console.log(`   Orientação de Saída: ${outputOrientation}`);
+  console.log(`   Transição: ${transition}${transition === 'crossfade' ? ` (${transitionDuration}s)` : ''}`);
 
   try {
     // 1. Download dos 2 vídeos em paralelo
@@ -434,7 +443,7 @@ async function mergeVideosHandler(req, res) {
     console.log(`🎬 [${jobId}] Concatenando vídeos...`);
     const mergeStart = Date.now();
     
-    await concatenateVideos(video1Path, video2Path, outputPath, quality, outputOrientation, jobId);
+    await concatenateVideos(video1Path, video2Path, outputPath, quality, outputOrientation, jobId, transition, transitionDuration);
     
     const mergeDuration = Date.now() - mergeStart;
     console.log(`✅ [${jobId}] Merge concluído em ${mergeDuration}ms`);
@@ -595,14 +604,16 @@ function addLetterboxToVertical(inputPath, outputPath, jobId) {
 /**
  * Concatena 2 vídeos usando FFmpeg
  * Usa filter concat para juntar os vídeos sequencialmente
+ * Ou xfade para criar transição suave (crossfade)
  */
-function concatenateVideos(video1Path, video2Path, outputPath, quality, orientation, jobId) {
+function concatenateVideos(video1Path, video2Path, outputPath, quality, orientation, jobId, transition = 'concat', transitionDuration = 0.5) {
   return new Promise(async (resolve, reject) => {
     console.log(`\n🔍 [${jobId}] ===== DEBUG MERGE INICIADO =====`);
     console.log(`📹 [${jobId}] Vídeo 1: ${video1Path}`);
     console.log(`📹 [${jobId}] Vídeo 2: ${video2Path}`);
     console.log(`📐 [${jobId}] Orientação: ${orientation}`);
     console.log(`⚙️ [${jobId}] Qualidade: ${quality}`);
+    console.log(`🎬 [${jobId}] Transição: ${transition} (duração: ${transitionDuration}s)`);
 
     // 🔍 PROBE: Obter metadados dos vídeos de entrada
     try {
@@ -654,28 +665,60 @@ function concatenateVideos(video1Path, video2Path, outputPath, quality, orientat
 
     const { crf, preset } = qualityPresets[quality] || qualityPresets.high;
 
-    // ✅ Filtro concat com NORMALIZAÇÃO DE RESOLUÇÃO - SIMPLIFICADO
-    // Usar scale sem padding (mais eficiente e evita erros)
+    // ✅ Filtro concat ou crossfade com NORMALIZAÇÃO DE RESOLUÇÃO + CROP
+    // Garante resolução exata fazendo crop (corte) para preencher toda a tela
+    
+    // Definir resolução alvo baseada na orientação
+    const targetResolution = orientation === 'vertical' ? '1080:1920' : '1280:720';
+    console.log(`🎯 [${jobId}] Resolução alvo: ${targetResolution}`);
+    
+    // Filtro de normalização: scale + crop para garantir resolução exata SEM bordas
+    // force_original_aspect_ratio=increase → Escala para COBRIR a área (pode cortar bordas)
+    // crop → Corta o excesso para atingir dimensões exatas (preenche tela completa)
+    const normalizeFilter = `scale=${targetResolution}:force_original_aspect_ratio=increase,crop=${targetResolution}`;
     
     let filterComplex;
+    let video1Duration = 0;
     
-    if (orientation === 'vertical') {
-      // Vertical: escalar ambos para 1080x1920
-      filterComplex = 
-        '[0:v]fps=25,scale=1080:1920,setsar=1[v0];' +
-        '[1:v]fps=25,scale=1080:1920,setsar=1[v1];' +
-        '[v0][v1]concat=n=2:v=1:a=0[outv]';
-      console.log(`\n📐 [${jobId}] Merge VERTICAL: normalizando ambos para 1080x1920 + concat`);
-      console.log(`🔧 [${jobId}] Filter Complex: ${filterComplex}`);
-    } else {
-      // Horizontal: escalar ambos para 1280x720
-      filterComplex = 
-        '[0:v]fps=25,scale=1280:720,setsar=1[v0];' +
-        '[1:v]fps=25,scale=1280:720,setsar=1[v1];' +
-        '[v0][v1]concat=n=2:v=1:a=0[outv]';
-      console.log(`\n📐 [${jobId}] Merge HORIZONTAL: normalizando ambos para 1280x720 + concat`);
-      console.log(`🔧 [${jobId}] Filter Complex: ${filterComplex}`);
+    // Se for crossfade, precisa obter a duração do vídeo 1
+    if (transition === 'crossfade') {
+      try {
+        const probe1 = await new Promise((res, rej) => {
+          ffmpeg.ffprobe(video1Path, (err, metadata) => {
+            if (err) rej(err);
+            else res(metadata);
+          });
+        });
+        
+        const video1Stream = probe1.streams.find(s => s.codec_type === 'video');
+        video1Duration = parseFloat(video1Stream.duration);
+        
+        console.log(`⏱️ [${jobId}] Duração vídeo 1: ${video1Duration}s`);
+        console.log(`⏱️ [${jobId}] Transição de ${transitionDuration}s começará em ${video1Duration - transitionDuration}s`);
+      } catch (err) {
+        console.error(`⚠️ [${jobId}] Erro ao obter duração do vídeo 1:`, err.message);
+        console.log(`⚠️ [${jobId}] Usando concat como fallback`);
+        transition = 'concat'; // Fallback para concat se não conseguir a duração
+      }
     }
+    
+    // Construir filterComplex com normalização garantida
+    if (transition === 'crossfade' && video1Duration > 0) {
+      const offset = video1Duration - transitionDuration;
+      filterComplex = 
+        `[0:v]fps=25,${normalizeFilter},setsar=1[v0];` +
+        `[1:v]fps=25,${normalizeFilter},setsar=1[v1];` +
+        `[v0][v1]xfade=transition=fade:duration=${transitionDuration}:offset=${offset}[outv]`;
+      console.log(`\n📐 [${jobId}] Merge ${orientation.toUpperCase()} com CROSSFADE (PAD): ${targetResolution}`);
+      console.log(`🎬 [${jobId}] Offset: ${offset}s | Duração: ${transitionDuration}s`);
+    } else {
+      filterComplex = 
+        `[0:v]fps=25,${normalizeFilter},setsar=1[v0];` +
+        `[1:v]fps=25,${normalizeFilter},setsar=1[v1];` +
+        `[v0][v1]concat=n=2:v=1:a=0[outv]`;
+      console.log(`\n📐 [${jobId}] Merge ${orientation.toUpperCase()} com CONCAT (PAD): ${targetResolution}`);
+    }
+    console.log(`🔧 [${jobId}] Filter Complex: ${filterComplex}`);
 
     // Argumentos FFmpeg para concatenação
     const args = [

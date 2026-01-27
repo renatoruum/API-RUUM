@@ -52,6 +52,7 @@ required_vars=(
     "FREEPIK_API_KEY"
     "BFL_API_KEY"
     "PIXVERSE_API_KEY"
+    "GEMINI_API_KEY"
     "API_TOKEN"
     "FIREBASE_API_KEY"
     "FIREBASE_AUTH_DOMAIN"
@@ -113,6 +114,7 @@ gcloud run deploy "$SERVICE_NAME" \
   --set-env-vars "FREEPIK_API_KEY=${FREEPIK_API_KEY}" \
   --set-env-vars "PIXVERSE_API_KEY=${PIXVERSE_API_KEY}" \
   --set-env-vars "BFL_API_KEY=${BFL_API_KEY}" \
+  --set-env-vars "GEMINI_API_KEY=${GEMINI_API_KEY}" \
   --set-env-vars "NODE_ENV=production" \
   --set-env-vars "API_TOKEN=${API_TOKEN}" \
   --set-env-vars "FIREBASE_API_KEY=${FIREBASE_API_KEY}" \

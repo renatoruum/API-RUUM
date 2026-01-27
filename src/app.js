@@ -24,9 +24,17 @@ import firebaseUploadRoutes from "./routes/firebaseUpload.js";
 import sendFluxRoute from "./routes/sendFlux.js";
 import sendImagePipelineRoute from "./routes/sendImagePipeline.js";
 import sendPixverseRoute from "./routes/sendPixverse.js";
+import sendImagenStagingRoute from "./routes/sendImagenStaging.js";
 
 const app = express();
-app.use(cors());
+
+// Configuração CORS mais permissiva
+app.use(cors({
+  origin: '*', // Permite todas as origens (para desenvolvimento e produção)
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'API-KEY', 'Ai-Trace-Id'],
+  credentials: true
+}));
 
 // Middleware para logging de requisições
 app.use((req, res, next) => {
@@ -98,6 +106,7 @@ app.use("/api", firebaseRoutes);
 app.use("/api", sendFluxRoute);
 app.use("/api", sendImagePipelineRoute);
 app.use("/api", sendPixverseRoute);
+app.use("/api", sendImagenStagingRoute);
 
 // Rota de teste para upload de imagem local para o Storage
 app.use("/api", firebaseStorageRoutes);
