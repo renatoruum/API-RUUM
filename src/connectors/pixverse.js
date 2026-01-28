@@ -13,64 +13,97 @@ const PIXVERSE_API_BASE_URL = 'https://app-api.pixverse.ai';
 const API_KEY = process.env.PIXVERSE_API_KEY;
 
 /**
+ * Helper para fazer retry com exponential backoff em caso de rate limit (429)
+ * @param {Function} fn - Função async a ser executada
+ * @param {number} maxRetries - Número máximo de tentativas
+ * @param {number} baseDelay - Delay base em ms
+ * @returns {Promise} Resultado da função
+ */
+async function retryWithBackoff(fn, maxRetries = 3, baseDelay = 1000) {
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+        try {
+            return await fn();
+        } catch (error) {
+            const isRateLimit = error.response?.status === 429;
+            const isLastAttempt = attempt === maxRetries;
+            
+            if (!isRateLimit || isLastAttempt) {
+                throw error;
+            }
+
+            // Calcula delay exponencial: 1s, 2s, 4s, 8s...
+            const delay = baseDelay * Math.pow(2, attempt);
+            const jitter = Math.random() * 500; // Adiciona variação aleatória
+            const totalDelay = delay + jitter;
+
+            console.log(`[PixVerse] Rate limit detected (429). Retrying in ${Math.round(totalDelay)}ms (attempt ${attempt + 1}/${maxRetries})...`);
+            
+            await new Promise(resolve => setTimeout(resolve, totalDelay));
+        }
+    }
+}
+
+/**
  * Faz upload de uma imagem para o PixVerse
  * Baixa a imagem da URL e faz upload como arquivo
  * @param {string} imageUrl - URL da imagem
  * @returns {Promise<number>} img_id
  */
 async function uploadImageFromUrl(imageUrl) {
-    try {
-        console.log(`[PixVerse] Downloading image from: ${imageUrl.substring(0, 100)}...`);
-        
-        // Primeiro, baixa a imagem
-        const imageResponse = await axios.get(imageUrl, {
-            responseType: 'arraybuffer',
-            timeout: 30000 // 30 segundos
-        });
+    return retryWithBackoff(async () => {
+        try {
+            console.log(`[PixVerse] Downloading image from: ${imageUrl.substring(0, 100)}...`);
+            
+            // Primeiro, baixa a imagem
+            const imageResponse = await axios.get(imageUrl, {
+                responseType: 'arraybuffer',
+                timeout: 30000 // 30 segundos
+            });
 
-        console.log(`[PixVerse] Image downloaded: ${imageResponse.data.length} bytes, type: ${imageResponse.headers['content-type']}`);
+            console.log(`[PixVerse] Image downloaded: ${imageResponse.data.length} bytes, type: ${imageResponse.headers['content-type']}`);
 
-        // Cria FormData e adiciona a imagem
-        const formData = new FormData();
-        formData.append('image', Buffer.from(imageResponse.data), {
-            filename: 'image.jpg',
-            contentType: imageResponse.headers['content-type'] || 'image/jpeg'
-        });
+            // Cria FormData e adiciona a imagem
+            const formData = new FormData();
+            formData.append('image', Buffer.from(imageResponse.data), {
+                filename: 'image.jpg',
+                contentType: imageResponse.headers['content-type'] || 'image/jpeg'
+            });
 
-        console.log(`[PixVerse] Uploading to PixVerse API...`);
+            console.log(`[PixVerse] Uploading to PixVerse API...`);
 
-        // Faz upload para o PixVerse
-        const response = await axios.post(
-            `${PIXVERSE_API_BASE_URL}/openapi/v2/image/upload`,
-            formData,
-            {
-                headers: {
-                    'API-KEY': API_KEY,
-                    'Ai-Trace-Id': uuidv4(),
-                    ...formData.getHeaders()
-                },
-                timeout: 60000, // 60 segundos
-                maxContentLength: Infinity,
-                maxBodyLength: Infinity
+            // Faz upload para o PixVerse
+            const response = await axios.post(
+                `${PIXVERSE_API_BASE_URL}/openapi/v2/image/upload`,
+                formData,
+                {
+                    headers: {
+                        'API-KEY': API_KEY,
+                        'Ai-Trace-Id': uuidv4(),
+                        ...formData.getHeaders()
+                    },
+                    timeout: 60000, // 60 segundos
+                    maxContentLength: Infinity,
+                    maxBodyLength: Infinity
+                }
+            );
+
+            console.log(`[PixVerse] Upload response:`, response.data);
+
+            if (response.data.ErrCode !== 0) {
+                throw new Error(`PixVerse Upload Error: ${response.data.ErrMsg}`);
             }
-        );
 
-        console.log(`[PixVerse] Upload response:`, response.data);
-
-        if (response.data.ErrCode !== 0) {
-            throw new Error(`PixVerse Upload Error: ${response.data.ErrMsg}`);
+            console.log(`[PixVerse] Image uploaded successfully, img_id: ${response.data.Resp.img_id}`);
+            return response.data.Resp.img_id;
+        } catch (error) {
+            console.error(`[PixVerse] Upload error:`, error.message);
+            if (error.response) {
+                console.error(`[PixVerse] Error response:`, error.response.status, error.response.data);
+                throw new Error(`PixVerse Upload API Error: ${error.response.status} - ${JSON.stringify(error.response.data)}`);
+            }
+            throw error;
         }
-
-        console.log(`[PixVerse] Image uploaded successfully, img_id: ${response.data.Resp.img_id}`);
-        return response.data.Resp.img_id;
-    } catch (error) {
-        console.error(`[PixVerse] Upload error:`, error.message);
-        if (error.response) {
-            console.error(`[PixVerse] Error response:`, error.response.status, error.response.data);
-            throw new Error(`PixVerse Upload API Error: ${error.response.status} - ${JSON.stringify(error.response.data)}`);
-        }
-        throw error;
-    }
+    });
 }
 
 /**
@@ -121,24 +154,36 @@ export async function createRuumDropVideo(options) {
 
         console.log('Creating transition video...', requestData);
 
-        const response = await axios.post(
-            `${PIXVERSE_API_BASE_URL}/openapi/v2/video/transition/generate`,
-            requestData,
-            {
-                headers: {
-                    'API-KEY': API_KEY,
-                    'Ai-Trace-Id': uuidv4(),
-                    'Content-Type': 'application/json'
+        const videoResponse = await retryWithBackoff(async () => {
+            return await axios.post(
+                `${PIXVERSE_API_BASE_URL}/openapi/v2/video/transition/generate`,
+                requestData,
+                {
+                    headers: {
+                        'API-KEY': API_KEY,
+                        'Ai-Trace-Id': uuidv4(),
+                        'Content-Type': 'application/json'
+                    }
                 }
-            }
-        );
+            );
+        });
 
-        if (response.data.ErrCode !== 0) {
-            throw new Error(`PixVerse Generation Error: ${response.data.ErrMsg}`);
+        console.log('[PixVerse] Transition video response:', JSON.stringify(videoResponse.data, null, 2));
+
+        if (videoResponse.data.ErrCode !== 0) {
+            console.error(`[PixVerse] Error Code: ${videoResponse.data.ErrCode}, Message: ${videoResponse.data.ErrMsg}`);
+            throw new Error(`PixVerse Generation Error: ${videoResponse.data.ErrMsg}`);
         }
 
+        if (!videoResponse.data.Resp || !videoResponse.data.Resp.video_id) {
+            console.error('[PixVerse] Missing video_id in response:', videoResponse.data);
+            throw new Error('PixVerse API did not return a video_id');
+        }
+
+        console.log(`[PixVerse] Video created successfully, video_id: ${videoResponse.data.Resp.video_id}`);
+
         return {
-            video_id: response.data.Resp.video_id,
+            video_id: videoResponse.data.Resp.video_id,
             status: 'processing',
             message: 'Video generation started'
         };
@@ -250,17 +295,19 @@ export async function imageToVideo(options) {
             ...(seed !== undefined && { seed })
         };
 
-        const response = await axios.post(
-            `${PIXVERSE_API_BASE_URL}/openapi/v2/video/image_to_video/generate`,
-            requestData,
-            {
-                headers: {
-                    'API-KEY': API_KEY,
-                    'Ai-Trace-Id': uuidv4(),
-                    'Content-Type': 'application/json'
+        const response = await retryWithBackoff(async () => {
+            return await axios.post(
+                `${PIXVERSE_API_BASE_URL}/openapi/v2/video/image_to_video/generate`,
+                requestData,
+                {
+                    headers: {
+                        'API-KEY': API_KEY,
+                        'Ai-Trace-Id': uuidv4(),
+                        'Content-Type': 'application/json'
+                    }
                 }
-            }
-        );
+            );
+        });
 
         if (response.data.ErrCode !== 0) {
             throw new Error(`PixVerse Generation Error: ${response.data.ErrMsg}`);
@@ -312,17 +359,19 @@ export async function textToVideo(options) {
             ...(seed !== undefined && { seed })
         };
 
-        const response = await axios.post(
-            `${PIXVERSE_API_BASE_URL}/openapi/v2/video/text_to_video/generate`,
-            requestData,
-            {
-                headers: {
-                    'API-KEY': API_KEY,
-                    'Ai-Trace-Id': uuidv4(),
-                    'Content-Type': 'application/json'
+        const response = await retryWithBackoff(async () => {
+            return await axios.post(
+                `${PIXVERSE_API_BASE_URL}/openapi/v2/video/text_to_video/generate`,
+                requestData,
+                {
+                    headers: {
+                        'API-KEY': API_KEY,
+                        'Ai-Trace-Id': uuidv4(),
+                        'Content-Type': 'application/json'
+                    }
                 }
-            }
-        );
+            );
+        });
 
         if (response.data.ErrCode !== 0) {
             throw new Error(`PixVerse Generation Error: ${response.data.ErrMsg}`);

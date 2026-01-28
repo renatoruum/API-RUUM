@@ -1,6 +1,7 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import dotenv from "dotenv";
 import axios from "axios";
+import sharp from "sharp";
 dotenv.config();
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
@@ -16,12 +17,9 @@ const genAI = GEMINI_API_KEY ? new GoogleGenerativeAI(GEMINI_API_KEY) : null;
 
 // Modelos disponíveis
 export const MODELS = {
-  // Nano Banana - suporta edição de imagens (image-to-image)
-  GEMINI_IMAGE_FLASH: "gemini-2.5-flash-image", // Rápido e eficiente para edição
-  GEMINI_IMAGE_PRO: "gemini-3-pro-image-preview", // Alta qualidade, até 4K
-  // Modelos de texto
-  GEMINI_FLASH: "gemini-2.0-flash-exp",
-  GEMINI_PRO: "gemini-1.5-pro-latest"
+  GEMINI_FLASH: "gemini-2.0-flash-exp",  // Para análise e verificação
+  GEMINI_PRO: "gemini-1.5-pro-latest",
+  GEMINI_3_PRO_IMAGE: "gemini-3-pro-image-preview"  // Para virtual staging com inpainting
 };
 
 // Aspect ratios suportados
@@ -93,13 +91,10 @@ Segment these distinct functional areas into use clusters where furniture island
 
 Describe a cohesive furniture layout for each island within an overall composition that does not obstruct pathways, circulation, or views, and does not leave large unused areas. Dimension each island and its respective furniture pieces according to the available area, making efficient use of the floor space while leaving sufficient breathing room for circulation. Consider accessories and finishing touches to create a complete, coherent, and cohesive layout.
 
-DESIGN STYLE TO ADOPT: ${styleInfo.name}
-Style Description: ${styleInfo.description}
-
-Provide a detailed description of the furniture layout for this space following this design style.`;
+Adopt a ${styleInfo.name.toLowerCase()} style—${styleInfo.description}`;
   },
 
-  STAGING_GENERATOR: (layoutDescription, designStyle = DEFAULT_STYLE) => {
+  STAGING_GENERATOR: (designStyle = DEFAULT_STYLE) => {
     const styleInfo = Object.values(DESIGN_STYLES).find(s => s.key === designStyle) || DESIGN_STYLES.CONTEMPORARY_MINIMALIST;
     
     return `Task: Apply the described layout and furniture to the image.
@@ -108,13 +103,9 @@ Do not obstruct circulation spaces, doors, entrances, sliding doors, windows, or
 
 Maintain a cohesive spatial relationship between the furniture islands, keeping the boundaries between the established distinct functional areas clear of furniture.
 
-DESIGN STYLE TO ADOPT: ${styleInfo.name}
-Style Description: ${styleInfo.description}
+Adopt a ${styleInfo.name.toLowerCase()} style—${styleInfo.description}
 
-The most important instruction to follow rigorously: Do not change anything else in the image besides adding the furniture and finishes.
-
-FURNITURE LAYOUT TO APPLY:
-${layoutDescription}`;
+THE MOST IMPORTANT INSTRUCTION TO FOLLOW RIGOROUSLY: Do not change anything else in the image besides adding the furniture and finishes. Keep all walls, windows, doors, floor finish, ceiling, and lighting exactly as they are in the original image.`;
   },
 
   VERIFICATION_CHECKS: [
@@ -174,6 +165,69 @@ export async function testConnection() {
 }
 
 /**
+ * Gera uma máscara PNG automática para inpainting
+ * Centro: branco (área editável)
+ * Bordas: preto (preservar estrutura)
+ */
+async function generateCenterMask(imageBuffer) {
+  try {
+    console.log("🎭 Gerando máscara automática para inpainting...");
+    
+    // Obter dimensões da imagem original
+    const metadata = await sharp(imageBuffer).metadata();
+    const { width, height } = metadata;
+    
+    console.log(`📐 Dimensões da imagem: ${width}x${height}`);
+    
+    // Calcular área da máscara (70% centro = branco, 30% bordas = preto)
+    const marginX = Math.floor(width * 0.15);  // 15% de cada lado = 30% total
+    const marginY = Math.floor(height * 0.15);
+    
+    const maskWidth = width - (2 * marginX);
+    const maskHeight = height - (2 * marginY);
+    
+    console.log(`🎭 Área editável (branco): ${maskWidth}x${maskHeight}`);
+    console.log(`🛡️ Bordas preservadas (preto): ${marginX}px horizontal, ${marginY}px vertical`);
+    
+    // Criar máscara: fundo preto com retângulo branco no centro
+    const mask = await sharp({
+      create: {
+        width,
+        height,
+        channels: 3,
+        background: { r: 0, g: 0, b: 0 } // Preto (preservar)
+      }
+    })
+    .composite([{
+      input: await sharp({
+        create: {
+          width: maskWidth,
+          height: maskHeight,
+          channels: 3,
+          background: { r: 255, g: 255, b: 255 } // Branco (editar)
+        }
+      }).png().toBuffer(),
+      top: marginY,
+      left: marginX
+    }])
+    .png()
+    .toBuffer();
+    
+    const maskBase64 = mask.toString('base64');
+    console.log("✅ Máscara gerada com sucesso!");
+    
+    return {
+      mimeType: 'image/png',
+      data: maskBase64
+    };
+    
+  } catch (error) {
+    console.error("❌ Erro ao gerar máscara:", error.message);
+    throw new Error(`Falha ao gerar máscara: ${error.message}`);
+  }
+}
+
+/**
  * Baixa uma imagem de URL e converte para base64
  */
 async function downloadImageAsBase64(imageUrl) {
@@ -196,11 +250,144 @@ async function downloadImageAsBase64(imageUrl) {
 }
 
 /**
+ * Agentes 1+2 Combinados: Analisa layout e gera staging em uma única sessão de chat
+ * Usa Gemini 3 Pro Image Preview com máscara para preservar estrutura arquitetônica
+ */
+export async function analyzeLayoutAndGenerateStaging(imageUrl, options = {}) {
+  try {
+    const {
+      designStyle = DEFAULT_STYLE,
+      aspectRatio = ASPECT_RATIOS.LANDSCAPE,
+      numberOfImages = 1
+    } = options;
+
+    console.log("🚀 AGENTES 1+2 COMBINADOS: Iniciando pipeline com chat session...");
+    console.log(`🎨 Estilo: ${designStyle}`);
+    console.log(`📐 Aspect Ratio: ${aspectRatio}`);
+
+    if (!GEMINI_API_KEY) {
+      throw new Error("GEMINI_API_KEY não definida");
+    }
+
+    if (!genAI) {
+      throw new Error("GoogleGenerativeAI não inicializado");
+    }
+
+    // 1. Download da imagem original
+    console.log("📥 Baixando imagem original...");
+    const imageData = await downloadImageAsBase64(imageUrl);
+    const imageBuffer = Buffer.from(imageData.data, 'base64');
+
+    // 2. Gerar máscara automática
+    const maskData = await generateCenterMask(imageBuffer);
+
+    // 3. Preparar partes para o modelo
+    const imagePart = {
+      inlineData: {
+        data: imageData.data,
+        mimeType: imageData.mimeType
+      }
+    };
+
+    const maskPart = {
+      inlineData: {
+        data: maskData.data,
+        mimeType: maskData.mimeType
+      }
+    };
+
+    // 4. Iniciar modelo Gemini 3 Pro Image Preview
+    console.log("🤖 Inicializando Gemini 3 Pro Image Preview...");
+    const model = genAI.getGenerativeModel({ 
+      model: MODELS.GEMINI_3_PRO_IMAGE,
+      generationConfig: {
+        temperature: 0.4,  // Baixa temperatura para mais fidelidade
+        topK: 32,
+        topP: 0.9
+      }
+    });
+
+    // 5. Criar sessão de chat para preservar contexto
+    const chat = model.startChat({
+      history: []
+    });
+
+    // 6. TURNO 1: Análise de layout
+    console.log("🏗️ TURNO 1: Enviando imagem para análise de layout...");
+    const analysisResult = await chat.sendMessage([
+      AGENT_PROMPTS.LAYOUT_ANALYZER(designStyle),
+      imagePart,
+      maskPart
+    ]);
+
+    const layoutDescription = analysisResult.response.text();
+    console.log("✅ TURNO 1: Layout analisado!");
+    console.log("📋 Layout:", layoutDescription.substring(0, 200) + "...");
+
+    // 7. TURNO 2: Geração de staging (Gemini já tem a imagem em memória!)
+    console.log("🎨 TURNO 2: Aplicando mobília (modelo lembra da imagem)...");
+    const stagingResult = await chat.sendMessage([
+      AGENT_PROMPTS.STAGING_GENERATOR(designStyle)
+    ]);
+
+    const response = await stagingResult.response;
+    
+    // 8. Extrair imagem gerada
+    console.log("📤 Extraindo imagem gerada...");
+    
+    if (!response.candidates || response.candidates.length === 0) {
+      throw new Error("Nenhuma imagem gerada pelo modelo");
+    }
+
+    const candidate = response.candidates[0];
+    
+    if (!candidate.content || !candidate.content.parts || candidate.content.parts.length === 0) {
+      throw new Error("Resposta do modelo não contém parts");
+    }
+
+    const outputImagePart = candidate.content.parts.find(part => part.inlineData);
+    
+    if (!outputImagePart || !outputImagePart.inlineData || !outputImagePart.inlineData.data) {
+      throw new Error("Imagem não encontrada na resposta do modelo");
+    }
+
+    const outputImageBase64 = outputImagePart.inlineData.data;
+    const outputMimeType = outputImagePart.inlineData.mimeType || 'image/png';
+    const outputImageBuffer = Buffer.from(outputImageBase64, 'base64');
+
+    console.log("✅ AGENTES 1+2: Pipeline completo!");
+    console.log(`📊 Tamanho da imagem: ${outputImageBuffer.length} bytes`);
+    console.log(`🎨 MIME type: ${outputMimeType}`);
+
+    return {
+      success: true,
+      imageBuffer: outputImageBuffer,
+      imageBase64: outputImageBase64,
+      mimeType: outputMimeType,
+      layoutDescription,
+      originalImageBase64: imageData.data,
+      originalImageMimeType: imageData.mimeType,
+      designStyle,
+      timestamp: new Date().toISOString()
+    };
+
+  } catch (error) {
+    console.error("❌ AGENTES 1+2 - Erro:", error.message);
+    if (error.response) {
+      console.error("❌ Response data:", JSON.stringify(error.response.data, null, 2));
+    }
+    throw new Error(`Pipeline de staging falhou: ${error.message}`);
+  }
+}
+
+/**
+ * DEPRECATED: Usar analyzeLayoutAndGenerateStaging() ao invés
  * Agente 1: Analisa a imagem e descreve o layout de móveis
  */
 export async function analyzeLayoutAgent(imageUrl, designStyle = DEFAULT_STYLE) {
+  console.warn("⚠️ analyzeLayoutAgent() está deprecated. Use analyzeLayoutAndGenerateStaging()");
   try {
-    console.log("🏗️ AGENTE 1: Analisando layout da imagem...");
+    console.log("🏗️ AGENTE 1 (LEGACY): Analisando layout da imagem...");
     console.log(`🎨 Estilo: ${designStyle}`);
 
     if (!GEMINI_API_KEY) {
@@ -212,7 +399,7 @@ export async function analyzeLayoutAgent(imageUrl, designStyle = DEFAULT_STYLE) 
     }
 
     const model = genAI.getGenerativeModel({ 
-      model: MODELS.GEMINI_FLASH 
+      model: MODELS.GEMINI_3_PRO_IMAGE 
     });
 
     // Download da imagem
@@ -251,95 +438,14 @@ export async function analyzeLayoutAgent(imageUrl, designStyle = DEFAULT_STYLE) 
 }
 
 /**
- * Agente 2: Gera a imagem de virtual staging usando Gemini Nano Banana (image editing)
+ * DEPRECATED: Usar analyzeLayoutAndGenerateStaging() ao invés
+ * Agente 2: Gera a imagem de virtual staging
  */
 export async function generateStagingAgent(layoutDescription, originalImageBase64, options = {}) {
-  try {
-    console.log("🎨 AGENTE 2: Gerando virtual staging com Gemini Nano Banana...");
-
-    const {
-      aspectRatio = ASPECT_RATIOS.LANDSCAPE,
-      numberOfImages = 1,
-      safetyFilterLevel = "block_low_and_above",
-      designStyle = DEFAULT_STYLE
-    } = options;
-
-    console.log(`🎨 Estilo: ${designStyle}`);
-    console.log(`📐 Aspect Ratio: ${aspectRatio}`);
-
-    const fullPrompt = AGENT_PROMPTS.STAGING_GENERATOR(layoutDescription, designStyle);
-
-    console.log("📝 Prompt para Gemini Image:", fullPrompt.substring(0, 150) + "...");
-
-    // Usar Gemini SDK para edição de imagens (image-to-image)
-    if (!genAI) {
-      throw new Error("GoogleGenerativeAI não inicializado - verifique GEMINI_API_KEY");
-    }
-
-    // Usar gemini-2.5-flash-image (Nano Banana) para edição de imagens
-    const model = genAI.getGenerativeModel({ 
-      model: MODELS.GEMINI_IMAGE_FLASH,
-      generationConfig: {
-        temperature: 0.4,
-        topP: 0.95,
-        topK: 40,
-      }
-    });
-
-    // Preparar a imagem em formato base64 com prefixo inline_data
-    const inputImage = {
-      inlineData: {
-        data: originalImageBase64,
-        mimeType: "image/jpeg" // ou "image/png" dependendo da imagem
-      }
-    };
-
-    // Gerar conteúdo com texto + imagem
-    const result = await model.generateContent([fullPrompt, inputImage]);
-    const response = await result.response;
-
-    // Extrair a imagem gerada
-    if (!response.candidates || response.candidates.length === 0) {
-      throw new Error("Nenhuma imagem foi gerada pelo Gemini");
-    }
-
-    const candidate = response.candidates[0];
-    const parts = candidate.content?.parts || [];
-    
-    // Procurar pela parte que contém a imagem
-    const outputImagePart = parts.find(part => part.inlineData?.mimeType?.startsWith('image/'));
-    
-    if (!outputImagePart || !outputImagePart.inlineData) {
-      throw new Error("Nenhuma imagem encontrada na resposta do Gemini");
-    }
-
-    const imageBase64 = outputImagePart.inlineData.data;
-    const imageBuffer = Buffer.from(imageBase64, 'base64');
-    const mimeType = outputImagePart.inlineData.mimeType || 'image/png';
-
-    console.log("✅ AGENTE 2: Imagem de staging gerada");
-    console.log(`📊 Tamanho: ${(imageBuffer.length / 1024).toFixed(2)} KB`);
-    console.log(`📝 Tipo MIME: ${mimeType}`);
-
-    return {
-      success: true,
-      imageBuffer,
-      imageBase64,
-      mimeType,
-      timestamp: new Date().toISOString()
-    };
-
-  } catch (error) {
-    console.error("❌ AGENTE 2 - Erro:", error.message);
-    
-    // Log detalhado do erro para debug
-    if (error.response) {
-      console.error("📊 Status:", error.response.status);
-      console.error("📋 Resposta da API:", JSON.stringify(error.response.data, null, 2));
-    }
-    
-    throw new Error(`Agente de Geração falhou: ${error.message}`);
-  }
+  console.warn("⚠️ generateStagingAgent() está deprecated. Use analyzeLayoutAndGenerateStaging()");
+  
+  // Fallback: retornar erro instruindo usar a nova função
+  throw new Error("generateStagingAgent() foi substituído por analyzeLayoutAndGenerateStaging(). Use a função combinada para melhores resultados.");
 }
 
 /**
@@ -358,7 +464,7 @@ export async function verifyQualityAgent(originalImageUrl, generatedImageBase64)
     }
 
     const model = genAI.getGenerativeModel({ 
-      model: MODELS.GEMINI_FLASH 
+      model: MODELS.GEMINI_3_PRO_IMAGE 
     });
 
     // Download da imagem original
@@ -491,6 +597,7 @@ function analyzeVerificationResults(results) {
 
 /**
  * Pipeline completo: Executa os 3 agentes em sequência
+ * ATUALIZADO: Usa nova função combinada analyzeLayoutAndGenerateStaging
  */
 export async function fullStagingPipeline(imageUrl, options = {}) {
   try {
@@ -502,15 +609,12 @@ export async function fullStagingPipeline(imageUrl, options = {}) {
 
     const startTime = Date.now();
 
-    // AGENTE 1: Análise de Layout
-    const layoutResult = await analyzeLayoutAgent(imageUrl, designStyle);
-
-    // AGENTE 2: Geração da Imagem (com image prompting)
-    const stagingResult = await generateStagingAgent(
-      layoutResult.layoutDescription,
-      layoutResult.originalImageBase64,
-      { ...otherOptions, designStyle }
-    );
+    // AGENTES 1+2 COMBINADOS: Análise de Layout + Geração de Staging (com chat session)
+    console.log("🔗 Executando Agentes 1+2 combinados (preserva contexto)...");
+    const stagingResult = await analyzeLayoutAndGenerateStaging(imageUrl, {
+      designStyle,
+      ...otherOptions
+    });
 
     // AGENTE 3: Verificação de Qualidade (com retry em caso de falha completa)
     let verificationResult;
@@ -546,7 +650,7 @@ export async function fullStagingPipeline(imageUrl, options = {}) {
     return {
       success: true,
       layout: {
-        description: layoutResult.layoutDescription
+        description: stagingResult.layoutDescription
       },
       staging: {
         imageBuffer: stagingResult.imageBuffer,
@@ -572,10 +676,12 @@ export async function fullStagingPipeline(imageUrl, options = {}) {
 
 export default {
   testConnection,
-  analyzeLayoutAgent,
-  generateStagingAgent,
+  analyzeLayoutAgent,  // DEPRECATED: usar analyzeLayoutAndGenerateStaging
+  generateStagingAgent,  // DEPRECATED: usar analyzeLayoutAndGenerateStaging
+  analyzeLayoutAndGenerateStaging,  // NOVO: Agentes 1+2 combinados
   verifyQualityAgent,
   fullStagingPipeline,
   MODELS,
-  ASPECT_RATIOS
+  ASPECT_RATIOS,
+  DESIGN_STYLES
 };
