@@ -110,28 +110,49 @@ THE MOST IMPORTANT INSTRUCTION TO FOLLOW RIGOROUSLY: Do not change anything else
 
   VERIFICATION_CHECKS: [
     {
+      id: 1,
       name: "walls",
-      prompt: "These two input images are a real photo and an AI-generated virtual staging of the same room. Map the walls and their lengths in both images. Are there alterations in the length of the corresponding walls between the images? Respond only: \"Walls: same/different\" + justification if \"different\"."
+      prompt: `These two input images are a real photo and an AI-generated virtual staging of the same room. Map the walls and their lengths in both images. Are there alterations in the length of the corresponding walls between the images?
+
+Respond in this exact format:
+Walls: same/different
+Reason: [Brief explanation if different, or "N/A" if same]`
     },
     {
+      id: 2,
       name: "doors_windows",
-      prompt: "These two input images are a real photo and an AI-generated virtual staging of the same room. Map the doors and windows and their positions in both images. Are there alterations in door or window position between the images? Respond only: \"Doors/windows placement: same/different\" + justification if \"different\"."
+      prompt: `These two input images are a real photo and an AI-generated virtual staging of the same room. Map the doors and windows and their positions in both images. Are there alterations in door or window position between the images?
+
+Respond in this exact format:
+Doors/windows placement: same/different
+Reason: [Brief explanation if different, or "N/A" if same]`
     },
     {
-      name: "peripheral_access",
-      prompt: "These two input images are a real photo and an AI-generated virtual staging of the same room. Map access pathways to adjacent areas not visible in the real photo. Are they still accessible in the AI render? Respond only: \"Peripheral access: same/different\" + justification if \"different\"."
-    },
-    {
+      id: 3,
       name: "shape",
-      prompt: "These two input images are a real photo and an AI-generated virtual staging of the same room. Map the visible floorplan shape in the real photo. Is it the same shape in the AI render? Respond only: \"Shape: same/different\" + justification if \"different\"."
+      prompt: `These two input images are a real photo and an AI-generated virtual staging of the same room. Map the visible floorplan shape in the real photo. Is it the same shape in the AI render?
+
+Respond in this exact format:
+Shape: same/different
+Reason: [Brief explanation if different, or "N/A" if same]`
     },
     {
+      id: 4,
       name: "obstructions",
-      prompt: "These two input images are a real photo and an AI-generated virtual staging of the same room. Map the doors, entrances, portals, storage units and circulation pathways in the real photo. Is access through any of them hindered totally or partially by the added furniture in the staged render? Respond only: \"Obstructions: Clear/hindered\" + justification if \"obstructed\"."
+      prompt: `These two input images are a real photo and an AI-generated virtual staging of the same room. Map the doors, entrances, portals, storage units and circulation pathways in the real photo. Is access through any of them hindered totally or partially by the added furniture in the staged render?
+
+Respond in this exact format:
+Obstructions: Clear/hindered
+Reason: [Brief explanation if hindered, or "N/A" if clear]`
     },
     {
+      id: 5,
       name: "camera",
-      prompt: "These two input images are a real photo and an AI-generated virtual staging of the same room. The furniture should be added on top of the real image without changing the camera characteristics. Analyze both images and determine whether the virtual camera of the AI render has the same camera position, angle, focal length/zoom, vanishing points, and horizon alignment as the real photo. Respond only: \"Camera: same/different\" + justification if \"different\"."
+      prompt: `These two input images are a real photo and an AI-generated virtual staging of the same room. The furniture should be added on top of the real image without changing the camera characteristics. Analyze both images and determine whether the virtual camera of the AI render has the same camera position, angle, focal length/zoom, vanishing points, and horizon alignment as the real photo.
+
+Respond in this exact format:
+Camera: same/different
+Reason: [Brief explanation if different, or "N/A" if same]`
     }
   ]
 };
@@ -252,18 +273,24 @@ async function downloadImageAsBase64(imageUrl) {
 /**
  * Agentes 1+2 Combinados: Analisa layout e gera staging em uma única sessão de chat
  * Usa Gemini 3 Pro Image Preview com máscara para preservar estrutura arquitetônica
+ * Suporta prompt incremental baseado em falhas anteriores
  */
 export async function analyzeLayoutAndGenerateStaging(imageUrl, options = {}) {
   try {
     const {
       designStyle = DEFAULT_STYLE,
       aspectRatio = ASPECT_RATIOS.LANDSCAPE,
-      numberOfImages = 1
+      numberOfImages = 1,
+      previousFailures = []  // Histórico de falhas para prompt incremental
     } = options;
 
     console.log("🚀 AGENTES 1+2 COMBINADOS: Iniciando pipeline com chat session...");
     console.log(`🎨 Estilo: ${designStyle}`);
     console.log(`📐 Aspect Ratio: ${aspectRatio}`);
+    
+    if (previousFailures.length > 0) {
+      console.log(`📝 Aplicando correções de ${previousFailures.length} falhas anteriores...`);
+    }
 
     if (!GEMINI_API_KEY) {
       throw new Error("GEMINI_API_KEY não definida");
@@ -312,10 +339,16 @@ export async function analyzeLayoutAndGenerateStaging(imageUrl, options = {}) {
       history: []
     });
 
-    // 6. TURNO 1: Análise de layout
+    // 6. TURNO 1: Análise de layout (com prompt incremental se houver falhas)
     console.log("🏗️ TURNO 1: Enviando imagem para análise de layout...");
-    const analysisResult = await chat.sendMessage([
+    
+    const layoutPrompt = buildIncrementalPrompt(
       AGENT_PROMPTS.LAYOUT_ANALYZER(designStyle),
+      previousFailures
+    );
+    
+    const analysisResult = await chat.sendMessage([
+      layoutPrompt,
       imagePart,
       maskPart
     ]);
@@ -326,8 +359,14 @@ export async function analyzeLayoutAndGenerateStaging(imageUrl, options = {}) {
 
     // 7. TURNO 2: Geração de staging (Gemini já tem a imagem em memória!)
     console.log("🎨 TURNO 2: Aplicando mobília (modelo lembra da imagem)...");
+    
+    const stagingPrompt = buildIncrementalPrompt(
+      AGENT_PROMPTS.STAGING_GENERATOR(designStyle),
+      previousFailures
+    );
+    
     const stagingResult = await chat.sendMessage([
-      AGENT_PROMPTS.STAGING_GENERATOR(designStyle)
+      stagingPrompt
     ]);
 
     const response = await stagingResult.response;
@@ -449,11 +488,52 @@ export async function generateStagingAgent(layoutDescription, originalImageBase6
 }
 
 /**
+ * Parse de resposta de verificação com justificativa
+ * Formato esperado:
+ * Status: same/different/Clear/hindered
+ * Reason: [justificativa ou N/A]
+ */
+function parseVerificationResponse(responseText) {
+  try {
+    const lines = responseText.trim().split('\n');
+    
+    // Primeira linha: status
+    const statusLine = lines[0] || '';
+    const statusMatch = statusLine.match(/:\s*(.+)/);
+    const status = statusMatch ? statusMatch[1].trim() : 'unknown';
+    
+    // Segunda linha: justificativa
+    const reasonLine = lines[1] || '';
+    const reasonMatch = reasonLine.match(/:\s*(.+)/);
+    const reason = reasonMatch ? reasonMatch[1].trim() : 'N/A';
+    
+    // Determina se passou
+    const passed = ['same', 'Clear'].includes(status);
+    
+    return {
+      status,
+      reason,
+      passed,
+      rawResponse: responseText
+    };
+  } catch (error) {
+    console.error("❌ Erro ao parsear resposta:", error.message);
+    return {
+      status: 'error',
+      reason: `Parse error: ${error.message}`,
+      passed: false,
+      rawResponse: responseText
+    };
+  }
+}
+
+/**
  * Agente 3: Verifica a qualidade da imagem gerada
+ * Executa 5 perguntas sequenciais com justificativa condicional
  */
 export async function verifyQualityAgent(originalImageUrl, generatedImageBase64) {
   try {
-    console.log("🔍 AGENTE 3: Verificando qualidade da imagem gerada (3 checks críticos)...");
+    console.log("🔍 AGENTE 3: Verificando qualidade com 5 checks sequenciais...");
 
     if (!GEMINI_API_KEY) {
       throw new Error("GEMINI_API_KEY não definida");
@@ -484,65 +564,80 @@ export async function verifyQualityAgent(originalImageUrl, generatedImageBase64)
       }
     };
 
-    // ✅ APENAS 2 VERIFICAÇÕES CRÍTICAS (reduzido de 6 para 2 para economizar quota)
-    const criticalChecks = AGENT_PROMPTS.VERIFICATION_CHECKS.filter(check => 
-      ['walls', 'obstructions'].includes(check.name)
-    );
+    const checks = AGENT_PROMPTS.VERIFICATION_CHECKS;
+    const verificationResults = [];
+    let lastPassedCheck = 0;
+    let allPassed = true;
 
-    const verificationResults = {};
+    // Executa cada verificação sequencialmente
+    for (const check of checks) {
+      console.log(`   🔎 Check ${check.id}/5: ${check.name}...`);
+      
+      try {
+        const result = await model.generateContent([
+          check.prompt,
+          originalImagePart,
+          generatedImagePart
+        ]);
 
-    // Helper para executar check com retry em caso de erro 429
-    const executeCheckWithRetry = async (check, maxRetries = 2) => {
-      for (let attempt = 1; attempt <= maxRetries; attempt++) {
-        try {
-          console.log(`   🔎 Verificando: ${check.name} (tentativa ${attempt}/${maxRetries})...`);
+        const responseText = result.response.text();
+        const parsed = parseVerificationResponse(responseText);
+        
+        console.log(`   📝 ${check.name}: ${parsed.status} (${parsed.reason.substring(0, 50)}...)`);
+        
+        verificationResults.push({
+          checkId: check.id,
+          checkName: check.name,
+          status: parsed.status,
+          reason: parsed.reason,
+          passed: parsed.passed,
+          rawResponse: parsed.rawResponse
+        });
 
-          const result = await model.generateContent([
-            check.prompt,
-            originalImagePart,
-            generatedImagePart
-          ]);
-
-          const checkResult = result.response.text();
-          console.log(`   ✅ ${check.name}: ${checkResult.substring(0, 80)}...`);
-          return checkResult;
-
-        } catch (error) {
-          const is429Error = error.message.includes('429') || 
-                            error.message.includes('Too Many Requests') || 
-                            error.message.includes('quota');
-          
-          // Se for erro 429 (quota excedida) e não for a última tentativa
-          if (is429Error && attempt < maxRetries) {
-            const waitTime = 60; // 60 segundos para quota resetar
-            console.warn(`   ⚠️ ${check.name} - Quota excedida. Aguardando ${waitTime}s antes de retry ${attempt + 1}/${maxRetries}...`);
-            await new Promise(resolve => setTimeout(resolve, waitTime * 1000));
-            continue;
-          }
-          
-          // Se for última tentativa ou erro diferente de 429, propaga o erro
-          throw error;
+        if (parsed.passed) {
+          lastPassedCheck = check.id;
+        } else {
+          // Falhou - interrompe a sequência
+          console.log(`   ❌ Check ${check.id} FALHOU: ${parsed.status} - ${parsed.reason}`);
+          allPassed = false;
+          break;
         }
+        
+        console.log(`   ✅ Check ${check.id} PASSOU`);
+        
+      } catch (error) {
+        console.error(`   ❌ Erro no check ${check.name}:`, error.message);
+        verificationResults.push({
+          checkId: check.id,
+          checkName: check.name,
+          status: 'error',
+          reason: error.message,
+          passed: false,
+          rawResponse: `Error: ${error.message}`
+        });
+        allPassed = false;
+        break;
       }
-    };
-
-    // Executa cada verificação com retry automático
-    for (const check of criticalChecks) {
-      verificationResults[check.name] = await executeCheckWithRetry(check);
     }
 
-    // Analisa os resultados para determinar se passou
-    const passed = analyzeVerificationResults(verificationResults);
+    const passedCount = verificationResults.filter(r => r.passed).length;
+    const totalChecks = checks.length;
 
-    console.log(passed ? "✅ AGENTE 3: Verificação PASSOU (3/3 checks)" : "⚠️ AGENTE 3: Verificação FALHOU");
+    console.log(allPassed 
+      ? `✅ AGENTE 3: Verificação PASSOU (${passedCount}/${totalChecks} checks)` 
+      : `⚠️ AGENTE 3: Verificação FALHOU (${passedCount}/${totalChecks} checks)`
+    );
 
     return {
       success: true,
-      passed,
+      passed: allPassed,
       checks: verificationResults,
-      timestamp: new Date().toISOString(),
-      totalChecks: criticalChecks.length,
-      checkTypes: ['walls', 'obstructions', 'camera']
+      score: {
+        passed: passedCount,
+        total: totalChecks,
+        lastPassedCheck: lastPassedCheck
+      },
+      timestamp: new Date().toISOString()
     };
 
   } catch (error) {
@@ -552,124 +647,224 @@ export async function verifyQualityAgent(originalImageUrl, generatedImageBase64)
 }
 
 /**
- * Analisa os resultados das verificações
+ * Constrói prompt incremental baseado em falhas anteriores
  */
-function analyzeVerificationResults(results) {
-  const issues = [];
-
-  // Verifica paredes
-  if (results.walls && results.walls.toLowerCase().includes("different")) {
-    issues.push("Alteração nas paredes detectada");
+function buildIncrementalPrompt(basePrompt, previousFailures) {
+  if (!previousFailures || previousFailures.length === 0) {
+    return basePrompt;
   }
 
-  // Verifica portas/janelas
-  if (results.doors_windows && results.doors_windows.toLowerCase().includes("different")) {
-    issues.push("Alteração em portas/janelas detectada");
-  }
+  const corrections = previousFailures.map(failure => {
+    return `- Attempt ${failure.attemptNumber}: Check "${failure.checkName}" failed because: ${failure.reason}`;
+  }).join('\n');
 
-  // Verifica acesso periférico
-  if (results.peripheral_access && results.peripheral_access.toLowerCase().includes("different")) {
-    issues.push("Alteração no acesso periférico detectada");
-  }
+  return `${basePrompt}
 
-  // Verifica forma
-  if (results.shape && results.shape.toLowerCase().includes("different")) {
-    issues.push("Alteração na forma do ambiente detectada");
-  }
+CRITICAL CORRECTIONS based on previous generation attempts:
+${corrections}
 
-  // Verifica obstruções
-  if (results.obstructions && results.obstructions.toLowerCase().includes("hindered")) {
-    issues.push("Obstruções de circulação detectadas");
-  }
-
-  // Verifica câmera
-  if (results.camera && results.camera.toLowerCase().includes("different")) {
-    issues.push("Alteração nas características da câmera detectada");
-  }
-
-  if (issues.length > 0) {
-    console.log("⚠️ Issues encontrados:", issues);
-    return false;
-  }
-
-  return true;
+Ensure these specific issues are avoided in this generation.`;
 }
 
 /**
- * Pipeline completo: Executa os 3 agentes em sequência
- * ATUALIZADO: Usa nova função combinada analyzeLayoutAndGenerateStaging
+ * Pipeline completo com regeneração inteligente (máximo 3 tentativas)
+ * - Executa Agentes 1+2 combinados para gerar staging
+ * - Executa Agente 3 para verificar qualidade (5 checks sequenciais)
+ * - Se falhar, regenera com prompt incremental (aprende com erros)
+ * - Retorna melhor tentativa (que chegou mais longe nos checks)
  */
 export async function fullStagingPipeline(imageUrl, options = {}) {
   try {
     const { designStyle = DEFAULT_STYLE, ...otherOptions } = options;
     
-    console.log("🚀 Iniciando pipeline completo de Virtual Staging");
+    console.log("🚀 Iniciando pipeline completo de Virtual Staging com regeneração inteligente");
     console.log("🖼️ Imagem original:", imageUrl);
     console.log("🎨 Estilo de design:", designStyle);
+    console.log("🔄 Máximo de tentativas: 3");
 
     const startTime = Date.now();
+    const MAX_ATTEMPTS = 3;
+    const attempts = [];
+    let bestAttempt = null;
+    let bestScore = -1;
+    let previousFailures = [];
 
-    // AGENTES 1+2 COMBINADOS: Análise de Layout + Geração de Staging (com chat session)
-    console.log("🔗 Executando Agentes 1+2 combinados (preserva contexto)...");
-    const stagingResult = await analyzeLayoutAndGenerateStaging(imageUrl, {
-      designStyle,
-      ...otherOptions
-    });
+    // Loop de tentativas (máximo 3)
+    for (let attemptNumber = 1; attemptNumber <= MAX_ATTEMPTS; attemptNumber++) {
+      console.log(`\n${'='.repeat(60)}`);
+      console.log(`🎯 TENTATIVA ${attemptNumber}/${MAX_ATTEMPTS}`);
+      console.log(`${'='.repeat(60)}\n`);
 
-    // AGENTE 3: Verificação de Qualidade (com retry em caso de falha completa)
-    let verificationResult;
-    let verificationAttempt = 0;
-    const maxVerificationAttempts = 2;
-    
-    while (verificationAttempt < maxVerificationAttempts) {
       try {
-        verificationResult = await verifyQualityAgent(
+        // AGENTES 1+2: Gera staging (com prompt incremental se houver falhas anteriores)
+        console.log("🔗 Executando Agentes 1+2 combinados...");
+        
+        // Constrói prompt incremental baseado em falhas anteriores
+        const incrementalOptions = {
+          designStyle,
+          previousFailures: previousFailures,  // Passa histórico de falhas
+          ...otherOptions
+        };
+
+        const stagingResult = await analyzeLayoutAndGenerateStaging(imageUrl, incrementalOptions);
+
+        // AGENTE 3: Verifica qualidade (5 checks sequenciais)
+        console.log("🔍 Executando Agente 3 (verificação de qualidade)...");
+        const verificationResult = await verifyQualityAgent(
           imageUrl,
           stagingResult.imageBase64
         );
-        break; // Sucesso - sai do loop
-      } catch (error) {
-        verificationAttempt++;
-        const isQuotaError = error.message.includes('429') || 
-                           error.message.includes('quota') || 
-                           error.message.includes('Too Many Requests');
+
+        // Armazena resultado desta tentativa
+        const attemptResult = {
+          attemptNumber,
+          stagingResult,
+          verificationResult,
+          score: verificationResult.score.passed,
+          lastPassedCheck: verificationResult.score.lastPassedCheck,
+          passed: verificationResult.passed,
+          timestamp: new Date().toISOString()
+        };
+
+        attempts.push(attemptResult);
+
+        // Atualiza melhor tentativa se esta for melhor
+        if (attemptResult.score > bestScore) {
+          bestScore = attemptResult.score;
+          bestAttempt = attemptResult;
+          console.log(`   ⭐ Nova melhor tentativa: ${bestScore}/5 checks passados`);
+        }
+
+        // Se passou em TODOS os checks, sucesso total!
+        if (verificationResult.passed) {
+          console.log(`\n${'='.repeat(60)}`);
+          console.log(`✅ SUCESSO na tentativa ${attemptNumber}! Todos os checks passaram.`);
+          console.log(`${'='.repeat(60)}\n`);
+          break;
+        }
+
+        // Se não passou, coleta justificativas das falhas para próxima tentativa
+        console.log(`\n⚠️ Tentativa ${attemptNumber} falhou nos checks de qualidade.`);
+        console.log(`📊 Score: ${attemptResult.score}/5 checks passados`);
         
-        if (isQuotaError && verificationAttempt < maxVerificationAttempts) {
-          console.warn(`⚠️ Agente 3 falhou completamente. Tentativa ${verificationAttempt + 1}/${maxVerificationAttempts} em 60s...`);
-          await new Promise(resolve => setTimeout(resolve, 60000)); // 60 segundos
-        } else {
-          throw error; // Re-lança o erro se não for quota ou última tentativa
+        const failedChecks = verificationResult.checks.filter(c => !c.passed);
+        
+        if (attemptNumber < MAX_ATTEMPTS) {
+          console.log(`\n📝 Coletando feedback das falhas para próxima tentativa...`);
+          
+          failedChecks.forEach(failedCheck => {
+            previousFailures.push({
+              attemptNumber,
+              checkId: failedCheck.checkId,
+              checkName: failedCheck.checkName,
+              status: failedCheck.status,
+              reason: failedCheck.reason
+            });
+            
+            console.log(`   ❌ Check "${failedCheck.checkName}": ${failedCheck.reason}`);
+          });
+          
+          console.log(`\n🔄 Preparando regeneração com prompt incremental...`);
+        }
+
+      } catch (error) {
+        console.error(`❌ Erro na tentativa ${attemptNumber}:`, error.message);
+        
+        // Armazena tentativa com erro
+        attempts.push({
+          attemptNumber,
+          error: error.message,
+          score: 0,
+          lastPassedCheck: 0,
+          passed: false,
+          timestamp: new Date().toISOString()
+        });
+
+        // Se for última tentativa, re-lança o erro
+        if (attemptNumber === MAX_ATTEMPTS) {
+          throw error;
         }
       }
     }
 
     const totalTime = ((Date.now() - startTime) / 1000).toFixed(2);
 
-    console.log(`✅ Pipeline completo em ${totalTime}s`);
+    // Se chegou aqui, usa a melhor tentativa (mesmo que não tenha passado 100%)
+    if (!bestAttempt) {
+      throw new Error("Nenhuma tentativa bem-sucedida. Pipeline falhou completamente.");
+    }
+
+    const allChecksPassed = bestAttempt.passed;
+    
+    console.log(`\n${'='.repeat(60)}`);
+    console.log(`📊 RESULTADO FINAL DO PIPELINE`);
+    console.log(`${'='.repeat(60)}`);
+    console.log(`⏱️  Tempo total: ${totalTime}s`);
+    console.log(`🎯 Tentativas realizadas: ${attempts.length}/${MAX_ATTEMPTS}`);
+    console.log(`⭐ Melhor tentativa: #${bestAttempt.attemptNumber}`);
+    console.log(`✓  Checks passados: ${bestScore}/5`);
+    console.log(`${allChecksPassed ? '✅ Status: APROVADO' : '⚠️  Status: APROVADO COM RESSALVAS'}`);
+    console.log(`${'='.repeat(60)}\n`);
+
+    // Logging estruturado (preparado para RAG futuro)
+    const structuredLog = {
+      pipelineId: `staging-${Date.now()}`,
+      imageUrl: imageUrl,
+      designStyle: designStyle,
+      attempts: attempts.map(att => ({
+        attemptNumber: att.attemptNumber,
+        score: att.score || 0,
+        lastPassedCheck: att.lastPassedCheck || 0,
+        passed: att.passed,
+        checks: att.verificationResult?.checks || [],
+        error: att.error,
+        timestamp: att.timestamp
+      })),
+      bestAttempt: {
+        attemptNumber: bestAttempt.attemptNumber,
+        score: bestScore,
+        allChecksPassed: allChecksPassed
+      },
+      totalTime: totalTime,
+      timestamp: new Date().toISOString()
+    };
+
+    // Log estruturado no backend (JSON para facilitar parsing futuro)
+    console.log('\n📋 STRUCTURED LOG (para RAG futuro):');
+    console.log(JSON.stringify(structuredLog, null, 2));
 
     return {
       success: true,
       layout: {
-        description: stagingResult.layoutDescription
+        description: bestAttempt.stagingResult.layoutDescription
       },
       staging: {
-        imageBuffer: stagingResult.imageBuffer,
-        imageBase64: stagingResult.imageBase64,
-        mimeType: stagingResult.mimeType
+        imageBuffer: bestAttempt.stagingResult.imageBuffer,
+        imageBase64: bestAttempt.stagingResult.imageBase64,
+        mimeType: bestAttempt.stagingResult.mimeType
       },
       verification: {
-        passed: verificationResult.passed,
-        checks: verificationResult.checks
+        passed: allChecksPassed,
+        score: {
+          passed: bestScore,
+          total: 5,
+          percentage: Math.round((bestScore / 5) * 100)
+        },
+        checks: bestAttempt.verificationResult.checks,
+        bestAttempt: bestAttempt.attemptNumber,
+        totalAttempts: attempts.length,
+        warning: allChecksPassed ? null : `Imagem aprovada com ressalvas. ${bestScore}/5 checks passaram.`
       },
       metadata: {
         originalImageUrl: imageUrl,
         processingTime: `${totalTime}s`,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
+        structuredLog: structuredLog  // Incluído para análise posterior
       }
     };
 
   } catch (error) {
-    console.error("❌ Pipeline falhou:", error.message);
+    console.error("❌ Pipeline falhou completamente:", error.message);
     throw error;
   }
 }
