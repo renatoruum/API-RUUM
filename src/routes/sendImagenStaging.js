@@ -1,4 +1,5 @@
 import express from "express";
+import multer from "multer";
 import {
   testConnection,
   analyzeLayoutAgent,
@@ -13,6 +14,20 @@ import {
 import { uploadToFirebase } from "../connectors/firebaseStorage.js";
 
 const router = express.Router();
+
+// Configurar multer para aceitar uploads de arquivos
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 10 * 1024 * 1024 // 10MB
+  },
+  fileFilter: (req, file, cb) => {
+    if (!file.mimetype.startsWith('image/')) {
+      return cb(new Error('Apenas arquivos de imagem são permitidos'));
+    }
+    cb(null, true);
+  }
+});
 
 /**
  * POST /imagen-staging
@@ -299,12 +314,12 @@ router.post("/imagen-staging/verify", async (req, res) => {
  * POST /imagen-staging/full-pipeline
  * Executa o pipeline completo: Análise + Geração + Verificação
  * Com upload automático para Firebase
+ * NOTA: aspect_ratio foi removido - sempre usa proporção original
  */
 router.post("/imagen-staging/full-pipeline", async (req, res) => {
   try {
     const {
       image_url,
-      aspect_ratio = "16:9",
       negative_prompt,
       number_of_images = 1,
       safety_filter_level = "block_low_and_above",
@@ -317,15 +332,6 @@ router.post("/imagen-staging/full-pipeline", async (req, res) => {
       return res.status(400).json({
         success: false,
         message: "Campo obrigatório: image_url"
-      });
-    }
-
-    // Validar aspect ratio
-    if (!Object.values(ASPECT_RATIOS).includes(aspect_ratio)) {
-      return res.status(400).json({
-        success: false,
-        message: `Aspect ratio inválido: ${aspect_ratio}`,
-        available_ratios: Object.values(ASPECT_RATIOS)
       });
     }
 
@@ -343,9 +349,8 @@ router.post("/imagen-staging/full-pipeline", async (req, res) => {
     console.log("🖼️ Imagem:", image_url);
     console.log("🎨 Estilo:", design_style);
 
-    // Executa o pipeline completo
+    // Executa o pipeline completo (SEM aspect_ratio - usa proporção original)
     const result = await fullStagingPipeline(image_url, {
-      aspectRatio: aspect_ratio,
       numberOfImages: number_of_images,
       negativePrompt: negative_prompt,
       safetyFilterLevel: safety_filter_level,
@@ -388,7 +393,11 @@ router.post("/imagen-staging/full-pipeline", async (req, res) => {
         layout_description: result.layout.description,
         verification: {
           passed: result.verification.passed,
-          checks: result.verification.checks
+          checks: result.verification.checks,
+          score: result.verification.score,
+          attempts: result.verification.attempts,
+          warnings: result.verification.warnings,
+          bestAttempt: result.verification.bestAttempt
         },
         image_base64: result.staging.imageBase64,
         mime_type: result.staging.mimeType,
@@ -398,6 +407,113 @@ router.post("/imagen-staging/full-pipeline", async (req, res) => {
     };
 
     // Se a verificação falhou, retorna status 200 mas com warning
+    if (!result.verification.passed) {
+      responseData.warning = "A imagem gerada pode ter problemas de qualidade";
+    }
+
+    res.status(200).json(responseData);
+
+  } catch (error) {
+    console.error("❌ Erro no pipeline:", error);
+    res.status(500).json({
+      success: false,
+      message: "Erro no pipeline de staging",
+      error: error.message
+    });
+  }
+});
+
+/**
+ * POST /imagen-staging/full-pipeline-upload
+ * Pipeline completo com upload de arquivo
+ * Aceita FormData com arquivo de imagem
+ */
+router.post("/imagen-staging/full-pipeline-upload", upload.single('image'), async (req, res) => {
+  try {
+    const {
+      design_style = DEFAULT_STYLE,
+      upload_to_firebase = 'true',
+      client_name = "imagen-staging"
+    } = req.body;
+
+    // Validar arquivo
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        message: "Campo obrigatório: arquivo de imagem"
+      });
+    }
+
+    // Validar design_style
+    const validStyles = Object.values(DESIGN_STYLES).map(s => s.key);
+    if (!validStyles.includes(design_style)) {
+      return res.status(400).json({
+        success: false,
+        message: `Estilo de design inválido: ${design_style}`,
+        available_styles: DESIGN_STYLES
+      });
+    }
+
+    console.log("🚀 Iniciando pipeline completo de Virtual Staging (Upload)");
+    console.log("📁 Arquivo:", req.file.originalname, `(${(req.file.size / 1024 / 1024).toFixed(2)} MB)`);
+    console.log("🎨 Estilo:", design_style);
+
+    // Executa o pipeline completo com buffer de imagem
+    const result = await fullStagingPipeline(req.file.buffer, {
+      numberOfImages: 1,
+      safetyFilterLevel: "block_low_and_above",
+      designStyle: design_style,
+      isBuffer: true // Flag para indicar que é buffer
+    });
+
+    let firebaseUrl = null;
+
+    // Upload para Firebase (se solicitado)
+    if (upload_to_firebase === 'true' && result.staging.imageBuffer) {
+      try {
+        console.log("☁️ Fazendo upload para Firebase...");
+
+        const timestamp = Date.now();
+        const fileName = `staging-${timestamp}.jpg`;
+
+        const uploadResult = await uploadToFirebase(
+          result.staging.imageBuffer,
+          fileName,
+          result.staging.mimeType || 'image/jpeg',
+          client_name
+        );
+
+        firebaseUrl = uploadResult;
+        console.log("✅ Upload para Firebase concluído");
+
+      } catch (uploadError) {
+        console.error("⚠️ Erro no upload para Firebase:", uploadError.message);
+      }
+    }
+
+    // Prepara resposta
+    const responseData = {
+      success: true,
+      message: result.verification.passed
+        ? "Virtual staging concluído com sucesso - Verificação PASSOU"
+        : "Virtual staging concluído com AVISOS - Verificação identificou possíveis problemas",
+      data: {
+        layout_description: result.layout.description,
+        verification: {
+          passed: result.verification.passed,
+          checks: result.verification.checks,
+          score: result.verification.score,
+          attempts: result.verification.attempts,
+          warnings: result.verification.warnings,
+          bestAttempt: result.verification.bestAttempt
+        },
+        image_base64: result.staging.imageBase64,
+        mime_type: result.staging.mimeType,
+        firebase_url: firebaseUrl,
+        metadata: result.metadata
+      }
+    };
+
     if (!result.verification.passed) {
       responseData.warning = "A imagem gerada pode ter problemas de qualidade";
     }

@@ -274,19 +274,21 @@ async function downloadImageAsBase64(imageUrl) {
  * Agentes 1+2 Combinados: Analisa layout e gera staging em uma única sessão de chat
  * Usa Gemini 3 Pro Image Preview com máscara para preservar estrutura arquitetônica
  * Suporta prompt incremental baseado em falhas anteriores
+ * @param {string|Buffer} imageInput - URL da imagem ou Buffer do arquivo
+ * @param {Object} options - Opções de configuração
  */
-export async function analyzeLayoutAndGenerateStaging(imageUrl, options = {}) {
+export async function analyzeLayoutAndGenerateStaging(imageInput, options = {}) {
   try {
     const {
       designStyle = DEFAULT_STYLE,
-      aspectRatio = ASPECT_RATIOS.LANDSCAPE,
       numberOfImages = 1,
-      previousFailures = []  // Histórico de falhas para prompt incremental
+      previousFailures = [],  // Histórico de falhas para prompt incremental
+      isBuffer = false  // Flag para indicar se imageInput é um Buffer
     } = options;
 
     console.log("🚀 AGENTES 1+2 COMBINADOS: Iniciando pipeline com chat session...");
     console.log(`🎨 Estilo: ${designStyle}`);
-    console.log(`📐 Aspect Ratio: ${aspectRatio}`);
+    console.log(`📥 Tipo de input: ${isBuffer ? 'Buffer (Upload)' : 'URL'}`);
     
     if (previousFailures.length > 0) {
       console.log(`📝 Aplicando correções de ${previousFailures.length} falhas anteriores...`);
@@ -300,10 +302,29 @@ export async function analyzeLayoutAndGenerateStaging(imageUrl, options = {}) {
       throw new Error("GoogleGenerativeAI não inicializado");
     }
 
-    // 1. Download da imagem original
-    console.log("📥 Baixando imagem original...");
-    const imageData = await downloadImageAsBase64(imageUrl);
-    const imageBuffer = Buffer.from(imageData.data, 'base64');
+    // 1. Obter dados da imagem (URL ou Buffer)
+    let imageData;
+    let imageBuffer;
+
+    if (isBuffer) {
+      console.log("📥 Convertendo buffer para base64...");
+      imageBuffer = imageInput;
+      
+      // Detectar mime type do buffer
+      const metadata = await sharp(imageBuffer).metadata();
+      const mimeType = metadata.format === 'jpeg' ? 'image/jpeg' : 
+                      metadata.format === 'png' ? 'image/png' :
+                      metadata.format === 'webp' ? 'image/webp' : 'image/jpeg';
+      
+      imageData = {
+        data: imageBuffer.toString('base64'),
+        mimeType: mimeType
+      };
+    } else {
+      console.log("📥 Baixando imagem de URL...");
+      imageData = await downloadImageAsBase64(imageInput);
+      imageBuffer = Buffer.from(imageData.data, 'base64');
+    }
 
     // 2. Gerar máscara automática
     const maskData = await generateCenterMask(imageBuffer);
@@ -531,7 +552,13 @@ function parseVerificationResponse(responseText) {
  * Agente 3: Verifica a qualidade da imagem gerada
  * Executa 5 perguntas sequenciais com justificativa condicional
  */
-export async function verifyQualityAgent(originalImageUrl, generatedImageBase64) {
+/**
+ * Agente 3: Verifica qualidade com 5 checks sequenciais
+ * @param {string} originalImageInput - URL ou base64 da imagem original
+ * @param {string} generatedImageBase64 - Base64 da imagem gerada
+ * @param {boolean} isOriginalBase64 - Se true, originalImageInput é base64, senão é URL
+ */
+export async function verifyQualityAgent(originalImageInput, generatedImageBase64, isOriginalBase64 = false) {
   try {
     console.log("🔍 AGENTE 3: Verificando qualidade com 5 checks sequenciais...");
 
@@ -547,8 +574,19 @@ export async function verifyQualityAgent(originalImageUrl, generatedImageBase64)
       model: MODELS.GEMINI_3_PRO_IMAGE 
     });
 
-    // Download da imagem original
-    const originalImageData = await downloadImageAsBase64(originalImageUrl);
+    // Obter dados da imagem original (URL ou base64)
+    let originalImageData;
+    
+    if (isOriginalBase64) {
+      console.log("📥 Imagem original já em base64");
+      originalImageData = {
+        data: originalImageInput,
+        mimeType: 'image/jpeg'  // Assume JPEG, pode ser ajustado se necessário
+      };
+    } else {
+      console.log("📥 Baixando imagem original de URL...");
+      originalImageData = await downloadImageAsBase64(originalImageInput);
+    }
 
     const originalImagePart = {
       inlineData: {
@@ -673,12 +711,18 @@ Ensure these specific issues are avoided in this generation.`;
  * - Se falhar, regenera com prompt incremental (aprende com erros)
  * - Retorna melhor tentativa (que chegou mais longe nos checks)
  */
-export async function fullStagingPipeline(imageUrl, options = {}) {
+/**
+ * Pipeline Completo: Agentes 1+2+3 com regeneração inteligente
+ * Tenta até 3 vezes, usando prompt incremental baseado em falhas anteriores
+ * Retorna sempre a melhor tentativa, mesmo se nenhuma passar em todos os checks
+ * @param {string|Buffer} imageInput - URL da imagem ou Buffer do arquivo
+ */
+export async function fullStagingPipeline(imageInput, options = {}) {
   try {
-    const { designStyle = DEFAULT_STYLE, ...otherOptions } = options;
+    const { designStyle = DEFAULT_STYLE, isBuffer = false, ...otherOptions } = options;
     
     console.log("🚀 Iniciando pipeline completo de Virtual Staging com regeneração inteligente");
-    console.log("🖼️ Imagem original:", imageUrl);
+    console.log("🖼️ Tipo de input:", isBuffer ? "Buffer (Upload)" : "URL");
     console.log("🎨 Estilo de design:", designStyle);
     console.log("🔄 Máximo de tentativas: 3");
 
@@ -703,16 +747,24 @@ export async function fullStagingPipeline(imageUrl, options = {}) {
         const incrementalOptions = {
           designStyle,
           previousFailures: previousFailures,  // Passa histórico de falhas
+          isBuffer,  // Indica se é buffer ou URL
           ...otherOptions
         };
 
-        const stagingResult = await analyzeLayoutAndGenerateStaging(imageUrl, incrementalOptions);
+        const stagingResult = await analyzeLayoutAndGenerateStaging(imageInput, incrementalOptions);
 
         // AGENTE 3: Verifica qualidade (5 checks sequenciais)
         console.log("🔍 Executando Agente 3 (verificação de qualidade)...");
+        
+        // Para verificação, sempre precisa usar base64 (tanto de URL quanto Buffer)
+        const originalImageBase64 = isBuffer ? 
+          Buffer.from(imageInput).toString('base64') : 
+          stagingResult.originalImageBase64;
+        
         const verificationResult = await verifyQualityAgent(
-          imageUrl,
-          stagingResult.imageBase64
+          originalImageBase64,
+          stagingResult.imageBase64,
+          true  // Flag indicando que primeiro parâmetro é base64
         );
 
         // Armazena resultado desta tentativa
@@ -809,7 +861,7 @@ export async function fullStagingPipeline(imageUrl, options = {}) {
     // Logging estruturado (preparado para RAG futuro)
     const structuredLog = {
       pipelineId: `staging-${Date.now()}`,
-      imageUrl: imageUrl,
+      imageSource: isBuffer ? 'file_upload' : 'url',
       designStyle: designStyle,
       attempts: attempts.map(att => ({
         attemptNumber: att.attemptNumber,
@@ -856,7 +908,7 @@ export async function fullStagingPipeline(imageUrl, options = {}) {
         warning: allChecksPassed ? null : `Imagem aprovada com ressalvas. ${bestScore}/5 checks passaram.`
       },
       metadata: {
-        originalImageUrl: imageUrl,
+        originalImageSource: isBuffer ? 'file_upload' : imageInput,
         processingTime: `${totalTime}s`,
         timestamp: new Date().toISOString(),
         structuredLog: structuredLog  // Incluído para análise posterior
