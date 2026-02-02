@@ -158,8 +158,8 @@ export async function transferApprovedSuggestionToImages(
     const baseInstance = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(process.env.AIRTABLE_BASE_ID);
     const results = [];
     
-    // Extrair URLs das imagens - APENAS do campo inputImages
-    const imageUrls = suggestionData.inputImages || [];
+    // Extrair URLs das imagens - de inputImages OU outputImages (para SmartBanana que só tem output)
+    const imageUrls = suggestionData.inputImages || suggestionData.outputImages || [];
     
     console.log("📊 [transferApprovedSuggestionToImages] URLs encontradas:", imageUrls.length);
     
@@ -217,9 +217,21 @@ export async function transferApprovedSuggestionToImages(
              
             const fields = {
                 property_code: suggestionData.codigo || '',
-                input_img: [{ url: imageUrl }], // UMA imagem por registro - nome correto do campo
                 request_log: suggestionData.observacoes || '', // Campo correto: request_log (não request_text)
             };
+            
+            // Se tem inputImages, salva em input_img. Se só tem outputImages, salva em output_img
+            if (suggestionData.inputImages && Array.isArray(suggestionData.inputImages)) {
+                fields.input_img = [{ url: imageUrl }];
+            }
+            
+            // Adicionar output_img se disponível (para SmartBanana e workflows de processamento)
+            if (suggestionData.outputImages && Array.isArray(suggestionData.outputImages) && suggestionData.outputImages.length > 0) {
+                // Para cada input_img, usar o output_img correspondente
+                const outputUrl = suggestionData.outputImages[i] || suggestionData.outputImages[0];
+                fields.output_img = [{ url: outputUrl }];
+                console.log("🎨 [transferApprovedSuggestionToImages] Adicionando output_img:", outputUrl.substring(0, 50) + '...');
+            }
             
             // Adicionar property_URL se disponível  
             if (suggestionData.propertyUrl) {

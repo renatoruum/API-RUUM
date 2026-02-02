@@ -80,81 +80,163 @@ export const DEFAULT_STYLE = DESIGN_STYLES.CONTEMPORARY_MINIMALIST.key;
 
 // Funções para gerar prompts dos agentes com estilo customizável
 const AGENT_PROMPTS = {
-  LAYOUT_ANALYZER: (designStyle = DEFAULT_STYLE) => {
+  LAYOUT_ANALYZER: (designStyle = DEFAULT_STYLE, roomType = 'living_room') => {
     const styleInfo = Object.values(DESIGN_STYLES).find(s => s.key === designStyle) || DESIGN_STYLES.CONTEMPORARY_MINIMALIST;
     
-    return `Role: You are a Senior Architect specialized in interior design. Your job is to create a cohesive furnishing layout for the space in the Input Image composed by distinct furniture islands.
+    // Prompts específicos por tipo de cômodo
+    const ROOM_LAYOUT_PROMPTS = {
+      living_room: `Role: You are a Senior Architect specialized in interior design. Your job is to create a cohesive furnishing layout for the space in the Input Image
 
-Observe the Input Image and determine which distinct functional areas are visible (e.g., living/dining room, tv rack/mount area, balcony, extended living/dining balcony, integrated kitchen), estimating their size.
+1. Observe the Input Image and determine which distinct functional areas are visible (e.g., living/dining room, tv rack/mount area, balcony, extended living/dining balcony, integrated kitchen), estimating their size. If the overall environment is small, consider it a single multiuse area.
+2. Describe a furniture layout for the space by segmenting the functional areas into distinct furniture islands, ensuring efficient use of the floor area while maintaining clear circulation paths and avoiding large unused spaces. For each island, define its dimensions and establish layout that respects clearance from built-in elements, doors, and portals and maintains an overall cohesive composition. Add a tv area coherent with the overall layout if possible.`,
 
-Segment these distinct functional areas into use clusters where furniture islands will be added, ensuring that all visible space in the Input Image is accounted for and maintaining cohesion while at the same time separation between distinct functional areas.
+      bedroom: `Role: You are a Senior Architect specialized in interior design. Your job is to create a cohesive furnishing layout for the bedroom space in the Input Image
 
-Describe a cohesive furniture layout for each island within an overall composition that does not obstruct pathways, circulation, or views, and does not leave large unused areas. Dimension each island and its respective furniture pieces according to the available area, making efficient use of the floor space while leaving sufficient breathing room for circulation. Consider accessories and finishing touches to create a complete, coherent, and cohesive layout.
+1. Observe the Input Image and determine which structural and built-in elements are visible (e.g., doors, windows, built-in storage).
+2. Assess where furniture cannot be added in order to ensure proper clearance for structural and built-in elements visible in the original photo.
+3. Describe a cohesive bedroom furniture layout and overall composition that does not obstruct pathways, circulation, or views. Choose furniture to compose a layout according to the available space, making efficient use of the floor area while leaving sufficient breathing room for circulation. Give preference to existing structures to determine furniture placement without obstructions.`,
+
+      kids_bedroom: `Role: You are a Senior Architect specialized in interior design. Your job is to create a cohesive furnishing layout for the children's bedroom space in the Input Image
+
+1. Observe the Input Image and determine which structural and built-in elements are visible (e.g., doors, windows, built-in storage).
+2. Assess where furniture cannot be added in order to ensure proper clearance for structural and built-in elements visible in the original photo.
+3. Describe a cohesive children's bedroom furniture layout and overall composition that does not obstruct pathways, circulation, or views. Choose furniture to compose a layout according to the available space, making efficient use of the floor area while leaving sufficient breathing room for circulation. Give preference to existing structures to determine furniture placement without obstructions.`,
+
+      baby_bedroom: `Role: You are a Senior Architect specialized in interior design. Your job is to create a cohesive furnishing layout for the baby's bedroom space in the Input Image
+
+1. Observe the Input Image and determine which structural and built-in elements are visible (e.g., doors, windows, built-in storage).
+2. Assess where furniture cannot be added in order to ensure proper clearance for structural and built-in elements visible in the original photo.
+3. Describe a cohesive baby's bedroom furniture layout and overall composition that does not obstruct pathways, circulation, or views. Choose furniture to compose a layout according to the available space, making efficient use of the floor area while leaving sufficient breathing room for circulation. Give preference to existing structures to determine furniture placement without obstructions.`,
+
+      home_office: `Role: You are a Senior Architect specialized in interior design. Your job is to create a cohesive furnishing layout for the home office space in the Input Image
+
+1. Observe the Input Image and determine which structural and built-in elements are visible (e.g., doors, windows, built-in storage).
+2. Assess where furniture cannot be added in order to ensure proper clearance for structural and built-in elements visible in the original photo.
+3. Describe a cohesive home office furniture layout and overall composition that does not obstruct pathways, circulation, or views. Choose furniture to compose a layout according to the available space, making efficient use of the floor area while leaving sufficient breathing room for circulation. Give preference to existing structures to determine furniture placement without obstructions.`,
+
+      kitchen: `Role: You are a Senior Architect specialized in interior design. Your job is to create a cohesive furnishing layout for the kitchen space in the Input Image, by composing a functional layout that integrates existing elements.
+
+1. Observe the Input Image and determine which structural elements are visible (e.g., doors, windows, plumbing fixtures, sinks, counters and cabinets).
+2. Assess where furniture cannot be added in order to ensure proper clearance for structural and built-in elements visible in the original photo and for circulation.
+3. Describe a cohesive kitchen furniture layout and overall composition that does not obstruct pathways, circulation, or views. Choose furniture to compose a layout according to the available space, making efficient use of the floor area while leaving sufficient breathing room for circulation. Give preference to existing structures to determine furniture placement without obstructions and ensure current plumbing fixtures are incorporated in the place they already exist.
+4. Identify furniture styles and materials that would elegantly complement the existing architecture in the input image.`,
+
+      outdoor: `Role: You are a Senior Architect specialized in interior design. Your job is to create a cohesive furnishing layout for the outdoor space in the Input Image, by composing a functional layout that integrates existing elements.
+
+1. Observe the Input Image and assess visible covered/uncovered and hardscape/softscape zones as well as structural elements (e.g., doors, windows, built-in grill, counter, plumbing fixtures) and estimate the size of these zones.
+2. Determine which distinct functional areas are visible (e.g., garden, patio, swimming pool, barbecue/grill station, outdoor dining area, lounge deck, walking path, plumbing fixtures).
+3. Segment these distinct functional areas into use clusters where furniture islands will be added, ensuring that all visible space in the Input Image is accounted for and maintaining cohesion while at the same time separation between distinct functional areas.
+4. Describe a cohesive outdoor furniture layout and overall composition that does not obstruct pathways, circulation, or views. Choose furniture to compose a layout according to the available space, making efficient use of the floor area while leaving sufficient breathing room for circulation and without overcrowding softscape. Give preference to existing structures to determine furniture placement without obstructions. Note that small spaces may consist of only one usable area.`
+    };
+
+    // Seleciona o prompt correto baseado no roomType
+    const basePrompt = ROOM_LAYOUT_PROMPTS[roomType] || ROOM_LAYOUT_PROMPTS.living_room;
+    
+    // Adiciona o estilo ao final do prompt
+    return `${basePrompt}
 
 Adopt a ${styleInfo.name.toLowerCase()} style—${styleInfo.description}`;
   },
 
-  STAGING_GENERATOR: (designStyle = DEFAULT_STYLE) => {
+  STAGING_GENERATOR: (designStyle = DEFAULT_STYLE, roomType = 'living_room') => {
     const styleInfo = Object.values(DESIGN_STYLES).find(s => s.key === designStyle) || DESIGN_STYLES.CONTEMPORARY_MINIMALIST;
     
-    return `Task: Apply the described layout and furniture to the image.
+    // Relação espacial por grupo de cômodos
+    const SPATIAL_RELATION_PROMPTS = {
+      furniture_islands: "Maintain a cohesive spatial relationship between the furniture islands, keeping the boundaries between the established distinct functional areas clear of furniture.",
+      furniture_pieces: "Maintain a cohesive spatial relationship between the furniture pieces, keeping functional clearance between added furniture and the structural elements/built-in storage in the input image."
+    };
+    
+    // Finalização específica por cômodo
+    const ROOM_FINISHING_PROMPTS = {
+      living_room: "Enrich the space with accessories and finishing touches, such as discreet decorative elements, subtle lighting, potted plant, artwork, to create a complete, coherent setting.",
+      bedroom: "Enrich the space with accessories and finishing touches, such as discreet decorative elements, subtle lighting, potted plant, artwork, mat and shelves, to create a complete, pleasant setting.",
+      kids_bedroom: "Enrich the space with accessories and finishing touches—such as cheerful decorative elements, child-safe lighting, stuffed animals, wall art, colorful bins, and shelves—to create a complete, coherent, cohesive, and child-friendly setting.",
+      baby_bedroom: "Enrich the space with accessories and finishing touches—such as soothing decorative elements, warm ambient lighting, stuffed animals, wall art, mobiles, storage bins, and shelves—to create a complete, coherent, cohesive, and baby-friendly setting.",
+      home_office: "Enrich the space with accessories and finishing touches—such as discreet decorative elements, task lighting, artwork, potted plants, organizational trays, and shelves—to create a complete, coherent, cohesive, and productive home office setting.",
+      kitchen: "Enrich the space with accessories and finishing touches, such as discreet decorative elements, subtle lighting, potted plants, appliances, cookware to create a complete, coherent setting.",
+      outdoor: "Enrich the space with subtle outdoor art and lush, well‑manicured, abundant greenery."
+    };
+    
+    // Determina qual relação espacial usar
+    const spatialRelation = ['living_room', 'outdoor'].includes(roomType) 
+      ? SPATIAL_RELATION_PROMPTS.furniture_islands 
+      : SPATIAL_RELATION_PROMPTS.furniture_pieces;
+    
+    // Seleciona finalização correta
+    const finishing = ROOM_FINISHING_PROMPTS[roomType] || ROOM_FINISHING_PROMPTS.living_room;
+    
+    return `Task: Produce an output image that is exactly the same as the input image, but with the described furniture layout added, without changing anything else in the input image
+- Do not obstruct circulation spaces, doors, entrances, sliding doors, windows, built-in elements or views
 
-Do not obstruct circulation spaces, doors, entrances, sliding doors, windows, or views.
+${spatialRelation}
 
-Maintain a cohesive spatial relationship between the furniture islands, keeping the boundaries between the established distinct functional areas clear of furniture.
+${finishing}
 
 Adopt a ${styleInfo.name.toLowerCase()} style—${styleInfo.description}
 
-THE MOST IMPORTANT INSTRUCTION TO FOLLOW RIGOROUSLY: Do not change anything else in the image besides adding the furniture and finishes. Keep all walls, windows, doors, floor finish, ceiling, and lighting exactly as they are in the original image.`;
+The most important instruction to follow rigorously: Do not change anything else in the image besides adding the furniture and finishes`;
   },
 
-  VERIFICATION_CHECKS: [
-    {
-      id: 1,
-      name: "walls",
-      prompt: `These two input images are a real photo and an AI-generated virtual staging of the same room. Map the walls and their lengths in both images. Are there alterations in the length of the corresponding walls between the images?
+  VERIFICATION_CHECKS: (roomType = 'living_room') => {
+    // Checks universais para todos os cômodos
+    const universalChecks = [
+      {
+        id: 1,
+        name: "walls",
+        prompt: `These two images are a real photo and an AI-generated virtual staging of the same room. Map the walls and their lengths in both images. Are there alterations in the length of the corresponding walls between two the images? Respond only: "Walls: same/different" + justification if "different".`
+      },
+      {
+        id: 2,
+        name: "doors_windows",
+        prompt: `These two images are a real photo and an AI-generated virtual staging of the same room. Map the doors and windows and their positions in both images. Are there alterations in door or window position between the images? Respond only: "Doors/windows placement: same/different" + justification if "different".`
+      },
+      {
+        id: 3,
+        name: "shape",
+        prompt: `These two images are a real photo and an AI-generated virtual staging of the same room. Map the visible floorplan shape in the real photo. Is it the same shape in the AI render? Respond only: "Shape: same/different" + justification if "different".`
+      },
+      {
+        id: 4,
+        name: "obstructions",
+        prompt: `These two images are a real photo and an AI-generated virtual staging of the same room. Map the doors, entrances, portals, storage units and circulation pathways in the real photo. Is access through any of them hindered totally or partially (less than 60cm clearance) by the added furniture in the staged render? Respond only: "Obstructions: Clear/hindered" + justification if "obstructed"`
+      },
+      {
+        id: 5,
+        name: "camera",
+        prompt: `These two images are a real photo and an AI-generated virtual staging of the same room. The furniture should be added on top of the real image without changing the camera characteristics. Analyze both images and determine whether the virtual camera of the AI render has the same camera position, angle, focal length/zoom, vanishing points, and horizon alignment as the real photo. Respond only: "Camera: same/different" + justification if "different"`
+      }
+    ];
 
-Respond in this exact format:
-Walls: same/different
-Reason: [Brief explanation if different, or "N/A" if same]`
-    },
-    {
-      id: 2,
-      name: "doors_windows",
-      prompt: `These two input images are a real photo and an AI-generated virtual staging of the same room. Map the doors and windows and their positions in both images. Are there alterations in door or window position between the images?
+    // Checks específicos por tipo de cômodo
+    const specificChecks = {
+      outdoor: [
+        {
+          id: 6,
+          name: "water_surfaces",
+          prompt: `These two images are a real photo and an AI-generated virtual staging of the same space. Locate any added water surface/pool. Analyze both images and determine if there is furniture that intersects the water (unless it is specific in-pool furniture). Respond only: "Water surfaces: Ok/Intersected" + justification if "Intersected"`
+        },
+        {
+          id: 7,
+          name: "counters_plumbing",
+          prompt: `These two images are a real photo and an AI-generated virtual staging of the same space. Analyze both images and determine whether the counters and plumbing fixtures visible in the original image also exist in the staged image in the same locations. Respond only: "Counters and plumbing: consistent/different" + justification if "different"`
+        }
+      ],
+      kitchen: [
+        {
+          id: 6,
+          name: "counters_plumbing",
+          prompt: `These two images are a real photo and an AI-generated virtual staging of the same space. Analyze both images and determine whether the counters and plumbing fixtures visible in the original image also exist in the staged image in the same locations. Respond only: "Counters and plumbing: consistent/different" + justification if "different"`
+        }
+      ]
+    };
 
-Respond in this exact format:
-Doors/windows placement: same/different
-Reason: [Brief explanation if different, or "N/A" if same]`
-    },
-    {
-      id: 3,
-      name: "shape",
-      prompt: `These two input images are a real photo and an AI-generated virtual staging of the same room. Map the visible floorplan shape in the real photo. Is it the same shape in the AI render?
-
-Respond in this exact format:
-Shape: same/different
-Reason: [Brief explanation if different, or "N/A" if same]`
-    },
-    {
-      id: 4,
-      name: "obstructions",
-      prompt: `These two input images are a real photo and an AI-generated virtual staging of the same room. Map the doors, entrances, portals, storage units and circulation pathways in the real photo. Is access through any of them hindered totally or partially by the added furniture in the staged render?
-
-Respond in this exact format:
-Obstructions: Clear/hindered
-Reason: [Brief explanation if hindered, or "N/A" if clear]`
-    },
-    {
-      id: 5,
-      name: "camera",
-      prompt: `These two input images are a real photo and an AI-generated virtual staging of the same room. The furniture should be added on top of the real image without changing the camera characteristics. Analyze both images and determine whether the virtual camera of the AI render has the same camera position, angle, focal length/zoom, vanishing points, and horizon alignment as the real photo.
-
-Respond in this exact format:
-Camera: same/different
-Reason: [Brief explanation if different, or "N/A" if same]`
-    }
-  ]
+    // Retorna checks universais + específicos do cômodo (se houver)
+    return [
+      ...universalChecks,
+      ...(specificChecks[roomType] || [])
+    ];
+  }
 };
 
 /**
@@ -281,6 +363,7 @@ export async function analyzeLayoutAndGenerateStaging(imageInput, options = {}) 
   try {
     const {
       designStyle = DEFAULT_STYLE,
+      roomType = 'living_room',
       numberOfImages = 1,
       previousFailures = [],  // Histórico de falhas para prompt incremental
       isBuffer = false  // Flag para indicar se imageInput é um Buffer
@@ -288,6 +371,7 @@ export async function analyzeLayoutAndGenerateStaging(imageInput, options = {}) 
 
     console.log("🚀 AGENTES 1+2 COMBINADOS: Iniciando pipeline com chat session...");
     console.log(`🎨 Estilo: ${designStyle}`);
+    console.log(`🏠 Cômodo: ${roomType}`);
     console.log(`📥 Tipo de input: ${isBuffer ? 'Buffer (Upload)' : 'URL'}`);
     
     if (previousFailures.length > 0) {
@@ -364,7 +448,7 @@ export async function analyzeLayoutAndGenerateStaging(imageInput, options = {}) 
     console.log("🏗️ TURNO 1: Enviando imagem para análise de layout...");
     
     const layoutPrompt = buildIncrementalPrompt(
-      AGENT_PROMPTS.LAYOUT_ANALYZER(designStyle),
+      AGENT_PROMPTS.LAYOUT_ANALYZER(designStyle, roomType),
       previousFailures
     );
     
@@ -382,7 +466,7 @@ export async function analyzeLayoutAndGenerateStaging(imageInput, options = {}) 
     console.log("🎨 TURNO 2: Aplicando mobília (modelo lembra da imagem)...");
     
     const stagingPrompt = buildIncrementalPrompt(
-      AGENT_PROMPTS.STAGING_GENERATOR(designStyle),
+      AGENT_PROMPTS.STAGING_GENERATOR(designStyle, roomType),
       previousFailures
     );
     
@@ -444,11 +528,12 @@ export async function analyzeLayoutAndGenerateStaging(imageInput, options = {}) 
  * DEPRECATED: Usar analyzeLayoutAndGenerateStaging() ao invés
  * Agente 1: Analisa a imagem e descreve o layout de móveis
  */
-export async function analyzeLayoutAgent(imageUrl, designStyle = DEFAULT_STYLE) {
+export async function analyzeLayoutAgent(imageUrl, designStyle = DEFAULT_STYLE, roomType = 'living_room') {
   console.warn("⚠️ analyzeLayoutAgent() está deprecated. Use analyzeLayoutAndGenerateStaging()");
   try {
     console.log("🏗️ AGENTE 1 (LEGACY): Analisando layout da imagem...");
     console.log(`🎨 Estilo: ${designStyle}`);
+    console.log(`🏠 Cômodo: ${roomType}`);
 
     if (!GEMINI_API_KEY) {
       throw new Error("GEMINI_API_KEY não definida");
@@ -473,7 +558,7 @@ export async function analyzeLayoutAgent(imageUrl, designStyle = DEFAULT_STYLE) 
     };
 
     const result = await model.generateContent([
-      AGENT_PROMPTS.LAYOUT_ANALYZER(designStyle),
+      AGENT_PROMPTS.LAYOUT_ANALYZER(designStyle, roomType),
       imagePart
     ]);
 
@@ -553,14 +638,16 @@ function parseVerificationResponse(responseText) {
  * Executa 5 perguntas sequenciais com justificativa condicional
  */
 /**
- * Agente 3: Verifica qualidade com 5 checks sequenciais
+ * Agente 3: Verifica qualidade com checks sequenciais (dinâmicos por roomType)
  * @param {string} originalImageInput - URL ou base64 da imagem original
  * @param {string} generatedImageBase64 - Base64 da imagem gerada
  * @param {boolean} isOriginalBase64 - Se true, originalImageInput é base64, senão é URL
+ * @param {string} roomType - Tipo de cômodo (living_room, outdoor, kitchen, etc)
  */
-export async function verifyQualityAgent(originalImageInput, generatedImageBase64, isOriginalBase64 = false) {
+export async function verifyQualityAgent(originalImageInput, generatedImageBase64, isOriginalBase64 = false, roomType = 'living_room') {
   try {
-    console.log("🔍 AGENTE 3: Verificando qualidade com 5 checks sequenciais...");
+    console.log("🔍 AGENTE 3: Verificando qualidade com checks sequenciais...");
+    console.log(`🏠 Cômodo: ${roomType}`);
 
     if (!GEMINI_API_KEY) {
       throw new Error("GEMINI_API_KEY não definida");
@@ -602,14 +689,17 @@ export async function verifyQualityAgent(originalImageInput, generatedImageBase6
       }
     };
 
-    const checks = AGENT_PROMPTS.VERIFICATION_CHECKS;
+    const checks = AGENT_PROMPTS.VERIFICATION_CHECKS(roomType);
     const verificationResults = [];
     let lastPassedCheck = 0;
     let allPassed = true;
+    
+    const totalChecks = checks.length;
+    console.log(`📋 Total de checks para ${roomType}: ${totalChecks}`);
 
     // Executa cada verificação sequencialmente
     for (const check of checks) {
-      console.log(`   🔎 Check ${check.id}/5: ${check.name}...`);
+      console.log(`   🔎 Check ${check.id}/${totalChecks}: ${check.name}...`);
       
       try {
         const result = await model.generateContent([
@@ -659,7 +749,6 @@ export async function verifyQualityAgent(originalImageInput, generatedImageBase6
     }
 
     const passedCount = verificationResults.filter(r => r.passed).length;
-    const totalChecks = checks.length;
 
     console.log(allPassed 
       ? `✅ AGENTE 3: Verificação PASSOU (${passedCount}/${totalChecks} checks)` 
@@ -719,11 +808,12 @@ Ensure these specific issues are avoided in this generation.`;
  */
 export async function fullStagingPipeline(imageInput, options = {}) {
   try {
-    const { designStyle = DEFAULT_STYLE, isBuffer = false, ...otherOptions } = options;
+    const { designStyle = DEFAULT_STYLE, roomType = 'living_room', isBuffer = false, ...otherOptions } = options;
     
     console.log("🚀 Iniciando pipeline completo de Virtual Staging com regeneração inteligente");
     console.log("🖼️ Tipo de input:", isBuffer ? "Buffer (Upload)" : "URL");
     console.log("🎨 Estilo de design:", designStyle);
+    console.log("🏠 Tipo de cômodo:", roomType);
     console.log("🔄 Máximo de tentativas: 3");
 
     const startTime = Date.now();
@@ -746,6 +836,7 @@ export async function fullStagingPipeline(imageInput, options = {}) {
         // Constrói prompt incremental baseado em falhas anteriores
         const incrementalOptions = {
           designStyle,
+          roomType,
           previousFailures: previousFailures,  // Passa histórico de falhas
           isBuffer,  // Indica se é buffer ou URL
           ...otherOptions
@@ -764,7 +855,8 @@ export async function fullStagingPipeline(imageInput, options = {}) {
         const verificationResult = await verifyQualityAgent(
           originalImageBase64,
           stagingResult.imageBase64,
-          true  // Flag indicando que primeiro parâmetro é base64
+          true,  // Flag indicando que primeiro parâmetro é base64
+          roomType  // Tipo de cômodo para checks específicos
         );
 
         // Armazena resultado desta tentativa
@@ -784,7 +876,8 @@ export async function fullStagingPipeline(imageInput, options = {}) {
         if (attemptResult.score > bestScore) {
           bestScore = attemptResult.score;
           bestAttempt = attemptResult;
-          console.log(`   ⭐ Nova melhor tentativa: ${bestScore}/5 checks passados`);
+          const totalChecks = verificationResult.score.total;
+          console.log(`   ⭐ Nova melhor tentativa: ${bestScore}/${totalChecks} checks passados`);
         }
 
         // Se passou em TODOS os checks, sucesso total!
@@ -797,7 +890,8 @@ export async function fullStagingPipeline(imageInput, options = {}) {
 
         // Se não passou, coleta justificativas das falhas para próxima tentativa
         console.log(`\n⚠️ Tentativa ${attemptNumber} falhou nos checks de qualidade.`);
-        console.log(`📊 Score: ${attemptResult.score}/5 checks passados`);
+        const totalChecks = verificationResult.score.total;
+        console.log(`📊 Score: ${attemptResult.score}/${totalChecks} checks passados`);
         
         const failedChecks = verificationResult.checks.filter(c => !c.passed);
         
@@ -885,6 +979,9 @@ export async function fullStagingPipeline(imageInput, options = {}) {
     console.log('\n📋 STRUCTURED LOG (para RAG futuro):');
     console.log(JSON.stringify(structuredLog, null, 2));
 
+    // Calcular total de checks baseado no roomType
+    const totalChecksForRoom = AGENT_PROMPTS.VERIFICATION_CHECKS(roomType).length;
+    
     return {
       success: true,
       layout: {
@@ -899,18 +996,19 @@ export async function fullStagingPipeline(imageInput, options = {}) {
         passed: allChecksPassed,
         score: {
           passed: bestScore,
-          total: 5,
-          percentage: Math.round((bestScore / 5) * 100)
+          total: totalChecksForRoom,
+          percentage: Math.round((bestScore / totalChecksForRoom) * 100)
         },
         checks: bestAttempt.verificationResult.checks,
         bestAttempt: bestAttempt.attemptNumber,
         totalAttempts: attempts.length,
-        warning: allChecksPassed ? null : `Imagem aprovada com ressalvas. ${bestScore}/5 checks passaram.`
+        warning: allChecksPassed ? null : `Imagem aprovada com ressalvas. ${bestScore}/${totalChecksForRoom} checks passaram.`
       },
       metadata: {
         originalImageSource: isBuffer ? 'file_upload' : imageInput,
         processingTime: `${totalTime}s`,
         timestamp: new Date().toISOString(),
+        roomType: roomType,
         structuredLog: structuredLog  // Incluído para análise posterior
       }
     };
@@ -921,6 +1019,72 @@ export async function fullStagingPipeline(imageInput, options = {}) {
   }
 }
 
+// ===================================================================
+// 🧪 TEST PROMPTS FUNCTION (Para validação)
+// ===================================================================
+
+/**
+ * Função para testar e visualizar os prompts gerados para cada cômodo
+ * SEM executar o processamento real da imagem
+ * @param {string} designStyle - Estilo de design (ex: 'scandinavian', 'modern')
+ * @param {string} roomType - Tipo de cômodo (ex: 'living_room', 'kitchen')
+ * @returns {Object} Objeto contendo os 3 prompts gerados
+ */
+export function testPrompts(designStyle = 'scandinavian', roomType = 'living_room') {
+  console.log('\n' + '='.repeat(80));
+  console.log('🧪 TESTE DE PROMPTS - SISTEMA DE VIRTUAL STAGING');
+  console.log('='.repeat(80));
+  console.log(`📍 Cômodo: ${roomType}`);
+  console.log(`🎨 Estilo: ${designStyle}`);
+  console.log('='.repeat(80) + '\n');
+
+  // 1️⃣ AGENT 1: LAYOUT_ANALYZER
+  const analyzerPrompt = AGENT_PROMPTS.LAYOUT_ANALYZER(designStyle, roomType);
+  console.log('1️⃣  AGENT 1: LAYOUT_ANALYZER');
+  console.log('-'.repeat(80));
+  console.log(analyzerPrompt);
+  console.log('\n');
+
+  // 2️⃣ AGENT 2: STAGING_GENERATOR
+  const generatorPrompt = AGENT_PROMPTS.STAGING_GENERATOR(designStyle, roomType);
+  console.log('2️⃣  AGENT 2: STAGING_GENERATOR');
+  console.log('-'.repeat(80));
+  console.log(generatorPrompt);
+  console.log('\n');
+
+  // 3️⃣ AGENT 3: VERIFICATION_CHECKS
+  const verificationChecks = AGENT_PROMPTS.VERIFICATION_CHECKS(roomType);
+  console.log('3️⃣  AGENT 3: VERIFICATION_CHECKS');
+  console.log('-'.repeat(80));
+  console.log(`Total de verificações para ${roomType}: ${verificationChecks.length}`);
+  console.log('\nLista de verificações:');
+  verificationChecks.forEach((check, index) => {
+    console.log(`\n[${index + 1}/${verificationChecks.length}] ${check.name}:`);
+    console.log(`   Descrição: ${check.description}`);
+    console.log(`   Tipo: ${check.type}`);
+  });
+  console.log('\n');
+
+  console.log('='.repeat(80));
+  console.log('✅ TESTE CONCLUÍDO');
+  console.log('='.repeat(80) + '\n');
+
+  return {
+    roomType,
+    designStyle,
+    prompts: {
+      analyzer: analyzerPrompt,
+      generator: generatorPrompt,
+      verification: verificationChecks
+    },
+    summary: {
+      totalVerificationChecks: verificationChecks.length,
+      roomTypeProcessed: roomType,
+      designStyleApplied: designStyle
+    }
+  };
+}
+
 export default {
   testConnection,
   analyzeLayoutAgent,  // DEPRECATED: usar analyzeLayoutAndGenerateStaging
@@ -928,6 +1092,7 @@ export default {
   analyzeLayoutAndGenerateStaging,  // NOVO: Agentes 1+2 combinados
   verifyQualityAgent,
   fullStagingPipeline,
+  testPrompts,
   MODELS,
   ASPECT_RATIOS,
   DESIGN_STYLES

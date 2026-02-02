@@ -1,17 +1,20 @@
 import express from "express";
 import multer from "multer";
+import Airtable from "airtable";
 import {
   testConnection,
   analyzeLayoutAgent,
   generateStagingAgent,
   verifyQualityAgent,
   fullStagingPipeline,
+  testPrompts,
   MODELS,
   ASPECT_RATIOS,
   DESIGN_STYLES,
   DEFAULT_STYLE
 } from "../connectors/imagenStaging.js";
 import { uploadToFirebase } from "../connectors/firebaseStorage.js";
+import { upsetImagesInAirtable } from "../connectors/airtable.js";
 
 const router = express.Router();
 
@@ -325,7 +328,8 @@ router.post("/imagen-staging/full-pipeline", async (req, res) => {
       safety_filter_level = "block_low_and_above",
       upload_to_firebase = true,
       client_name = "imagen-staging",
-      design_style = DEFAULT_STYLE
+      design_style = DEFAULT_STYLE,
+      room_type = "living_room"
     } = req.body;
 
     if (!image_url) {
@@ -345,16 +349,36 @@ router.post("/imagen-staging/full-pipeline", async (req, res) => {
       });
     }
 
+    // Validar room_type
+    const validRoomTypes = [
+      'living_room',
+      'bedroom',
+      'kids_bedroom',
+      'baby_bedroom',
+      'home_office',
+      'kitchen',
+      'outdoor'
+    ];
+    if (!validRoomTypes.includes(room_type)) {
+      return res.status(400).json({
+        success: false,
+        message: `Tipo de cômodo inválido: ${room_type}`,
+        available_room_types: validRoomTypes
+      });
+    }
+
     console.log("🚀 Iniciando pipeline completo de Virtual Staging");
     console.log("🖼️ Imagem:", image_url);
     console.log("🎨 Estilo:", design_style);
+    console.log("🏠 Cômodo:", room_type);
 
     // Executa o pipeline completo (SEM aspect_ratio - usa proporção original)
     const result = await fullStagingPipeline(image_url, {
       numberOfImages: number_of_images,
       negativePrompt: negative_prompt,
       safetyFilterLevel: safety_filter_level,
-      designStyle: design_style
+      designStyle: design_style,
+      roomType: room_type
     });
 
     let firebaseUrl = null;
@@ -433,7 +457,8 @@ router.post("/imagen-staging/full-pipeline-upload", upload.single('image'), asyn
     const {
       design_style = DEFAULT_STYLE,
       upload_to_firebase = 'true',
-      client_name = "imagen-staging"
+      client_name = "imagen-staging",
+      room_type = "living_room"
     } = req.body;
 
     // Validar arquivo
@@ -454,37 +479,73 @@ router.post("/imagen-staging/full-pipeline-upload", upload.single('image'), asyn
       });
     }
 
+    // Validar room_type
+    const validRoomTypes = [
+      'living_room',
+      'bedroom',
+      'kids_bedroom',
+      'baby_bedroom',
+      'home_office',
+      'kitchen',
+      'outdoor'
+    ];
+    if (!validRoomTypes.includes(room_type)) {
+      return res.status(400).json({
+        success: false,
+        message: `Tipo de cômodo inválido: ${room_type}`,
+        available_room_types: validRoomTypes
+      });
+    }
+
     console.log("🚀 Iniciando pipeline completo de Virtual Staging (Upload)");
     console.log("📁 Arquivo:", req.file.originalname, `(${(req.file.size / 1024 / 1024).toFixed(2)} MB)`);
     console.log("🎨 Estilo:", design_style);
+    console.log("🏠 Cômodo:", room_type);
 
     // Executa o pipeline completo com buffer de imagem
     const result = await fullStagingPipeline(req.file.buffer, {
       numberOfImages: 1,
       safetyFilterLevel: "block_low_and_above",
       designStyle: design_style,
+      roomType: room_type,
       isBuffer: true // Flag para indicar que é buffer
     });
 
     let firebaseUrl = null;
+    let originalFirebaseUrl = null;
 
     // Upload para Firebase (se solicitado)
-    if (upload_to_firebase === 'true' && result.staging.imageBuffer) {
+    if (upload_to_firebase === 'true') {
       try {
-        console.log("☁️ Fazendo upload para Firebase...");
-
         const timestamp = Date.now();
-        const fileName = `staging-${timestamp}.jpg`;
 
-        const uploadResult = await uploadToFirebase(
-          result.staging.imageBuffer,
-          fileName,
-          result.staging.mimeType || 'image/jpeg',
-          client_name
-        );
+        // Upload da imagem ORIGINAL
+        if (req.file.buffer) {
+          console.log("☁️ Fazendo upload da imagem ORIGINAL para Firebase...");
+          const originalFileName = `${timestamp}_original-${req.file.originalname}`;
+          
+          originalFirebaseUrl = await uploadToFirebase(
+            req.file.buffer,
+            originalFileName,
+            req.file.mimetype,
+            client_name
+          );
+          console.log("✅ Upload da imagem original concluído");
+        }
 
-        firebaseUrl = uploadResult;
-        console.log("✅ Upload para Firebase concluído");
+        // Upload da imagem PROCESSADA
+        if (result.staging.imageBuffer) {
+          console.log("☁️ Fazendo upload da imagem PROCESSADA para Firebase...");
+          const fileName = `${timestamp}_staging-${timestamp}.jpg`;
+
+          firebaseUrl = await uploadToFirebase(
+            result.staging.imageBuffer,
+            fileName,
+            result.staging.mimeType || 'image/jpeg',
+            client_name
+          );
+          console.log("✅ Upload da imagem processada concluído");
+        }
 
       } catch (uploadError) {
         console.error("⚠️ Erro no upload para Firebase:", uploadError.message);
@@ -510,6 +571,7 @@ router.post("/imagen-staging/full-pipeline-upload", upload.single('image'), asyn
         image_base64: result.staging.imageBase64,
         mime_type: result.staging.mimeType,
         firebase_url: firebaseUrl,
+        original_firebase_url: originalFirebaseUrl,
         metadata: result.metadata
       }
     };
@@ -549,6 +611,196 @@ router.get("/imagen-staging/models", (req, res) => {
       }
     }
   });
+});
+
+// ===================================================================
+// 🏥 HEALTH CHECK: Verificar se a rota de aprovação está funcionando
+// ===================================================================
+router.get('/imagen-staging/approve/health', (req, res) => {
+  res.json({
+    status: 'ok',
+    message: 'Rota de aprovação está funcionando',
+    timestamp: new Date().toISOString()
+  });
+});
+
+// ===================================================================
+// 👍 ROTA DE APROVAÇÃO: Salvar Imagem Aprovada no Airtable
+// ===================================================================
+router.post('/imagen-staging/approve', async (req, res) => {
+  try {
+    console.log("👍 [POST /approve] Rota acessada!");
+    console.log("👍 [POST /approve] Body recebido:", JSON.stringify(req.body, null, 2));
+    console.log("👍 [POST /approve] Iniciando aprovação de imagem...");
+    
+    const {
+      input_image_url,
+      output_image_url,
+      property_code,
+      room_type,
+      design_style,
+      layout_description,
+      quality_score,
+      checks_passed,
+      checks_total,
+      client_email,
+      client_id,
+      user_id,
+      invoice_id,
+      client_name,
+      base_table,
+      approved_at
+    } = req.body;
+
+    // Validações
+    if (!output_image_url) {
+      return res.status(400).json({
+        success: false,
+        error: 'output_image_url é obrigatório'
+      });
+    }
+
+    if (!client_id) {
+      return res.status(400).json({
+        success: false,
+        error: 'client_id é obrigatório'
+      });
+    }
+
+    console.log("📋 Dados recebidos:", {
+      client_id,
+      user_id,
+      invoice_id,
+      room_type,
+      design_style,
+      quality_score
+    });
+
+    // Mapeamento de room_type (inglês → português para Airtable)
+    const roomTypeMap = {
+      'living_room': 'Sala de estar + jantar',
+      'kitchen': 'Cozinha',
+      'bedroom': 'Quarto',
+      'kids_bedroom': 'Quarto infantil',
+      'baby_bedroom': 'Quarto infantil',
+      'outdoor': 'Área externa',
+      'home_office': 'Home Office'
+    };
+
+    const roomTypePt = roomTypeMap[room_type] || room_type;
+
+    // Configurar Airtable
+    Airtable.configure({
+      apiKey: process.env.AIRTABLE_API_KEY
+    });
+    const base = Airtable.base(process.env.AIRTABLE_BASE_ID);
+
+    // Preparar dados para Airtable (campos exatos da tabela Images)
+    // ETAPA 1: Criar registro SEM campo 'status' (evitar conflito com automação)
+    const recordData = {
+      client: [client_id],
+      invoice: invoice_id ? [invoice_id] : [],
+      workflow: 'SmartBanana',
+      input_img: input_image_url ? [{ url: input_image_url }] : [],
+      output_img: [{ url: output_image_url }],
+      style: [],
+      room_type: roomTypePt,
+      property_code: property_code || '',
+      user: user_id ? [user_id] : []
+    };
+
+    console.log("📤 Criando registro direto no Airtable (sem status inicial):", recordData);
+
+    // Criar registro diretamente via API do Airtable
+    const createdRecords = await base('Images').create([
+      { fields: recordData }
+    ]);
+
+    if (createdRecords && createdRecords.length > 0) {
+      const record = createdRecords[0];
+      console.log(`✅ [POST /approve] Registro criado no Airtable: ${record.id}`);
+      
+      // ETAPA 2: Aguardar 5 segundos para automação do Airtable executar
+      console.log("⏳ Aguardando 5s para automação do Airtable...");
+      await new Promise(resolve => setTimeout(resolve, 5000));
+      
+      // ETAPA 3: Atualizar campo 'status' (sobrescreve automação)
+      console.log("🔄 Atualizando status para 'Imagem aprovada'...");
+      await base('Images').update(record.id, {
+        status: 'Imagem aprovada'
+      });
+      console.log(`✅ [POST /approve] Status atualizado com sucesso!`);
+      
+      res.json({
+        success: true,
+        message: 'Imagem aprovada e salva com sucesso',
+        airtable_record_id: record.id,
+        data: {
+          room_type,
+          design_style,
+          quality_score,
+          client_name: client_name || client_email,
+          input_img: input_image_url,
+          output_img: output_image_url
+        }
+      });
+    } else {
+      throw new Error('Falha ao criar registro no Airtable');
+    }
+
+  } catch (error) {
+    console.error("❌ [POST /approve] Erro:", error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Erro interno ao salvar aprovação'
+    });
+  }
+});
+
+// ===================================================================
+// 🧪 ROTA DE TESTE: Visualizar Prompts sem Processar Imagem
+// ===================================================================
+router.post('/imagen-staging/test-prompts', async (req, res) => {
+  try {
+    const { design_style = 'scandinavian', room_type = 'living_room' } = req.body;
+
+    // Validar room_type
+    const validRoomTypes = [
+      'living_room', 'bedroom', 'kids_bedroom', 'baby_bedroom',
+      'home_office', 'kitchen', 'outdoor'
+    ];
+
+    if (!validRoomTypes.includes(room_type)) {
+      return res.status(400).json({
+        error: 'Invalid room_type',
+        validOptions: validRoomTypes,
+        received: room_type
+      });
+    }
+
+    console.log(`\n🧪 Testando prompts para: ${room_type} | Estilo: ${design_style}`);
+
+    // Executar teste
+    const testResult = testPrompts(design_style, room_type);
+
+    // Retornar resultado estruturado
+    res.json({
+      success: true,
+      message: 'Prompts gerados com sucesso (modo teste)',
+      data: testResult,
+      instructions: {
+        message: 'Os prompts foram exibidos no console do servidor',
+        tip: 'Verifique o terminal onde o servidor está rodando para ver os logs completos'
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Erro ao testar prompts:', error);
+    res.status(500).json({
+      error: 'Erro ao gerar prompts de teste',
+      details: error.message
+    });
+  }
 });
 
 export default router;

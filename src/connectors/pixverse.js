@@ -19,7 +19,7 @@ const API_KEY = process.env.PIXVERSE_API_KEY;
  * @param {number} baseDelay - Delay base em ms
  * @returns {Promise} Resultado da função
  */
-async function retryWithBackoff(fn, maxRetries = 3, baseDelay = 1000) {
+async function retryWithBackoff(fn, maxRetries = 5, baseDelay = 2000) {
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
         try {
             return await fn();
@@ -31,9 +31,9 @@ async function retryWithBackoff(fn, maxRetries = 3, baseDelay = 1000) {
                 throw error;
             }
 
-            // Calcula delay exponencial: 1s, 2s, 4s, 8s...
+            // Calcula delay exponencial: 2s, 4s, 8s, 16s, 32s...
             const delay = baseDelay * Math.pow(2, attempt);
-            const jitter = Math.random() * 500; // Adiciona variação aleatória
+            const jitter = Math.random() * 1000; // Adiciona variação aleatória
             const totalDelay = delay + jitter;
 
             console.log(`[PixVerse] Rate limit detected (429). Retrying in ${Math.round(totalDelay)}ms (attempt ${attempt + 1}/${maxRetries})...`);
