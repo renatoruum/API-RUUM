@@ -32,7 +32,6 @@ POST /api/ffmpeg/before-after
 ### Headers
 
 ```
-Authorization: Bearer YOUR_API_KEY
 Content-Type: application/json
 ```
 
@@ -51,7 +50,6 @@ Content-Type: application/json
 
 ```bash
 curl -X POST https://apiruum-562831020087.us-central1.run.app/api/ffmpeg/before-after \
-  -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
     "bottom": "https://storage.example.com/empty-room.jpg",
@@ -179,9 +177,6 @@ async function createBeforeAfterVideo() {
     {
       bottom: 'https://example.com/empty-living.jpg',
       top: 'https://example.com/staged-living.jpg'
-    },
-    {
-      headers: { 'Authorization': `Bearer ${process.env.RUUM_API_KEY}` }
     }
   );
   
@@ -229,8 +224,6 @@ const videos = await Promise.all(
       bottom: pair.before,
       top: pair.after,
       duration: 5
-    }, {
-      headers: { 'Authorization': `Bearer ${process.env.RUUM_API_KEY}` }
     })
   )
 );
@@ -326,7 +319,7 @@ sequenceDiagram
 **Solução:** Redimensione para mesma resolução antes do upload
 
 ### Erro: "Image download failed"
-**Causa:** URL inacessível ou requer autenticação  
+**Causa:** URL inacessível  
 **Solução:** Certifique-se que as URLs são públicas
 
 ### Vídeo com qualidade ruim
@@ -347,4 +340,4 @@ sequenceDiagram
 
 ---
 
-**Dúvidas?** suporte@ruum.com.br
+**Dúvidas?** renato@ruum.com.br

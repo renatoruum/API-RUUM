@@ -34,76 +34,6 @@ A API Ruum retorna erros estruturados no formato JSON com informações detalhad
 
 ---
 
-## 🔐 Erros de Autenticação (401, 403)
-
-### 401 - MISSING_API_KEY
-
-**Causa:** Header `Authorization` não foi enviado
-
-**Resposta:**
-```json
-{
-  "success": false,
-  "error": {
-    "code": "MISSING_API_KEY",
-    "message": "API key is required. Include it in the Authorization header."
-  }
-}
-```
-
-**Solução:**
-```bash
-# ✅ Correto
-curl -H "Authorization: Bearer YOUR_API_KEY" ...
-
-# ❌ Errado (sem header)
-curl https://apiruum.../api/...
-```
-
----
-
-### 401 - INVALID_API_KEY
-
-**Causa:** API Key está malformada, inválida ou expirada
-
-**Resposta:**
-```json
-{
-  "success": false,
-  "error": {
-    "code": "INVALID_API_KEY",
-    "message": "The provided API key is invalid or expired",
-    "details": "Key format should be: ruum_live_* or ruum_test_*"
-  }
-}
-```
-
-**Solução:**
-1. Verifique se a chave está correta (copie/cole novamente)
-2. Confirme que não há espaços extras
-3. Solicite nova chave se necessário: integracoes@ruum.com.br
-
----
-
-### 403 - FORBIDDEN
-
-**Causa:** IP não autorizado ou recurso bloqueado
-
-**Resposta:**
-```json
-{
-  "success": false,
-  "error": {
-    "code": "FORBIDDEN",
-    "message": "Access denied. Your IP is not whitelisted."
-  }
-}
-```
-
-**Solução:** Contate o suporte para adicionar seu IP à whitelist
-
----
-
 ## 📝 Erros de Validação (400)
 
 ### 400 - MISSING_REQUIRED_FIELD
@@ -155,7 +85,7 @@ axios.post('/api/imagen-staging/full-pipeline', {
 ```
 
 **Solução:**
-1. Verifique se a URL é pública (não requer autenticação)
+1. Verifique se a URL é pública
 2. Teste a URL no navegador
 3. Confirme o formato: JPG, PNG ou WebP
 4. Verifique se o servidor de origem permite hotlinking
@@ -479,10 +409,7 @@ async function makeRequestWithRetry(url, data, maxRetries = 3) {
 ### Checklist de Troubleshooting
 
 ```javascript
-// 1. Verifique a autenticação
-console.log('API Key presente:', !!process.env.RUUM_API_KEY);
-
-// 2. Teste a URL da imagem
+// 1. Verifique a URL da imagem
 const testImageUrl = async (url) => {
   const response = await axios.head(url);
   console.log('Status:', response.status);
@@ -490,7 +417,7 @@ const testImageUrl = async (url) => {
   console.log('Content-Length:', response.headers['content-length']);
 };
 
-// 3. Valide os parâmetros
+// 2. Valide os parâmetros
 const validateParams = (params) => {
   const required = ['imageUrl'];
   for (const field of required) {
@@ -500,14 +427,12 @@ const validateParams = (params) => {
   }
 };
 
-// 4. Implemente retry com logs
+// 3. Implemente retry com logs
 const makeRequestWithLogging = async (url, data) => {
   console.log('📤 Request:', { url, data });
   
   try {
-    const response = await axios.post(url, data, {
-      headers: { 'Authorization': `Bearer ${process.env.RUUM_API_KEY}` }
-    });
+    const response = await axios.post(url, data);
     console.log('✅ Success:', response.data);
     return response.data;
   } catch (error) {
@@ -528,8 +453,6 @@ const makeRequestWithLogging = async (url, data) => {
 
 | Código | Error Code | Causa Comum | Ação |
 |--------|------------|-------------|------|
-| 401 | MISSING_API_KEY | Header ausente | Adicione Authorization header |
-| 401 | INVALID_API_KEY | Chave inválida | Verifique a chave |
 | 400 | INVALID_IMAGE_URL | URL inacessível | Torne a URL pública |
 | 400 | IMAGE_TOO_LARGE | Imagem >10MB | Comprima a imagem |
 | 429 | RATE_LIMIT_EXCEEDED | Muitas requisições | Implemente retry |
@@ -556,21 +479,21 @@ Contate o suporte quando:
 - Request ID (se disponível no erro)
 - Timestamp do erro
 - Código HTTP e código de erro
-- Exemplo de payload enviado (sem API key!)
+- Exemplo de payload enviado
 - Logs completos
 
 **Contato:**
-- 📧 Email: suporte@ruum.com.br
+- 📧 Email: renato@ruum.com.br
 - 💬 Slack: #api-suporte
 
 ---
 
 ## 📚 Referências Relacionadas
 
-- [Authentication](./AUTHENTICATION.md) - Resolver erros 401/403
 - [Rate Limits](./RATE_LIMITS.md) - Resolver erros 429
 - [Quick Start](./QUICKSTART.md) - Exemplos funcionais
 
 ---
+
 
 **Última atualização:** Fevereiro 2026

@@ -32,7 +32,6 @@ POST /api/imagen-staging/full-pipeline
 ### Headers
 
 ```
-Authorization: Bearer YOUR_API_KEY
 Content-Type: application/json
 ```
 
@@ -49,7 +48,6 @@ Content-Type: application/json
 
 ```bash
 curl -X POST https://apiruum-562831020087.us-central1.run.app/api/imagen-staging/full-pipeline \
-  -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
     "imageUrl": "https://storage.example.com/empty-living-room.jpg",
@@ -178,11 +176,13 @@ Quando nenhuma tentativa passa em todos os checks, retorna a que chegou mais lon
 
 | Tipo | Chave | Móveis Típicos | Checks Específicos |
 |------|-------|----------------|-------------------|
-| Sala de Estar | `living_room` | Sofá, poltronas, mesa de centro, TV | Verificação de sofá centralizado |
-| Área Externa | `outdoor` | Móveis para jardim, plantas, churrasqueira | Verificação de móveis resistentes a clima |
-| Cozinha | `kitchen` | Bancada, armários, eletrodomésticos | Verificação de materiais de cozinha |
+| Sala de Estar/Jantar | `living_room` | Sofá, poltronas, mesa de centro, TV | Verificação de sofá centralizado |
 | Quarto | `bedroom` | Cama, criado-mudo, guarda-roupa | Verificação de cama como peça central |
-| Banheiro | `bathroom` | Pia, espelho, acessórios | Verificação de materiais impermeáveis |
+| Quarto Infantil | `kids_bedroom` | Cama infantil, brinquedos, escrivaninha | Verificação de elementos infantis |
+| Quarto de Bebê | `baby_bedroom` | Berço, poltrona de amamentação, cômoda | Verificação de berço como peça central |
+| Home Office | `home_office` | Mesa de trabalho, cadeira, estante | Verificação de setup de trabalho |
+| Cozinha | `kitchen` | Bancada, armários, eletrodomésticos | Verificação de materiais de cozinha |
+| Área Externa | `outdoor` | Móveis para jardim, plantas, churrasqueira | Verificação de móveis resistentes a clima |
 
 ---
 
@@ -322,6 +322,7 @@ console.log(response.data.metadata.qualityScore);
 
 ## 🐛 Troubleshooting
 
+
 ### Problema: Imagem demora mais de 2 minutos
 **Causa:** Imagem muito grande ou servidor sobrecarregado  
 **Solução:** Reduza o tamanho da imagem para <5MB
@@ -348,4 +349,4 @@ console.log(response.data.metadata.qualityScore);
 
 ---
 
-**Dúvidas?** suporte@ruum.com.br
+**Dúvidas?** renato@ruum.com.br

@@ -44,7 +44,6 @@ GET /api/runway/status/:taskId
 ### Headers
 
 ```
-Authorization: Bearer YOUR_API_KEY
 Content-Type: application/json
 ```
 
@@ -61,7 +60,6 @@ Content-Type: application/json
 
 ```bash
 curl -X POST https://apiruum-562831020087.us-central1.run.app/api/runway/image-to-video \
-  -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
     "imageUrl": "https://storage.example.com/living-room.jpg",
@@ -116,8 +114,7 @@ GET /api/runway/status/:taskId
 ### Exemplo
 
 ```bash
-curl -X GET https://apiruum-562831020087.us-central1.run.app/api/runway/status/runway_abc123xyz \
-  -H "Authorization: Bearer YOUR_API_KEY"
+curl -X GET https://apiruum-562831020087.us-central1.run.app/api/runway/status/runway_abc123xyz
 ```
 
 ---
@@ -236,7 +233,6 @@ const axios = require('axios');
 
 async function createMagicMotionVideo(imageUrl) {
   const API_URL = 'https://apiruum-562831020087.us-central1.run.app';
-  const headers = { 'Authorization': `Bearer ${process.env.RUUM_API_KEY}` };
   
   // 1. Inicia processamento
   console.log('🎬 Iniciando processamento...');
@@ -247,8 +243,7 @@ async function createMagicMotionVideo(imageUrl) {
       promptText: 'Smooth camera push in, slow cinematic movement',
       duration: 5
     },
-    { headers }
-  );
+    {
   
   const { taskId } = startResponse.data.data;
   console.log(`✅ Task iniciada: ${taskId}`);
@@ -263,7 +258,6 @@ async function createMagicMotionVideo(imageUrl) {
     const statusResponse = await axios.get(
       `${API_URL}/api/runway/status/${taskId}`,
       { headers }
-    );
     
     const { status, data, error } = statusResponse.data;
     
@@ -376,7 +370,7 @@ sequenceDiagram
 - **Tamanho máximo da imagem:** 10MB
 - **Resolução mínima:** 1024x1024
 - **Resolução máxima:** 4096x4096
-- **Concurrent tasks:** 5 por API key
+- **Concurrent tasks:** 5 simultâneos
 - **Timeout:** 10 minutos por vídeo
 
 ---
@@ -482,4 +476,4 @@ async function createFullPipeline(emptyRoomUrl, stagedRoomUrl) {
 
 ---
 
-**Dúvidas?** suporte@ruum.com.br
+**Dúvidas?** renato@ruum.com.br

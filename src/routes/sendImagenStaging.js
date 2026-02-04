@@ -758,6 +758,138 @@ router.post('/imagen-staging/approve', async (req, res) => {
 });
 
 // ===================================================================
+// 👎 ROTA DE REPROVAÇÃO: Salvar Imagem Reprovada no Airtable
+// ===================================================================
+router.post('/imagen-staging/disapprove', async (req, res) => {
+  try {
+    console.log("👎 [POST /disapprove] Rota acessada!");
+    console.log("👎 [POST /disapprove] Body recebido:", JSON.stringify(req.body, null, 2));
+    console.log("👎 [POST /disapprove] Iniciando reprovação de imagem...");
+    
+    const {
+      input_image_url,
+      output_image_url,
+      property_code,
+      room_type,
+      design_style,
+      disapproval_description,
+      layout_description,
+      quality_score,
+      checks_passed,
+      checks_total,
+      client_email,
+      client_id,
+      user_id,
+      invoice_id,
+      client_name,
+      base_table,
+      disapproved_at
+    } = req.body;
+
+    // Validações
+    if (!output_image_url) {
+      return res.status(400).json({
+        success: false,
+        error: 'output_image_url é obrigatório'
+      });
+    }
+
+    if (!client_id) {
+      return res.status(400).json({
+        success: false,
+        error: 'client_id é obrigatório'
+      });
+    }
+
+    if (!disapproval_description) {
+      return res.status(400).json({
+        success: false,
+        error: 'disapproval_description é obrigatório'
+      });
+    }
+
+    console.log("📋 Dados recebidos:", {
+      client_id,
+      user_id,
+      invoice_id,
+      room_type,
+      design_style,
+      quality_score,
+      disapproval_description: disapproval_description.substring(0, 50) + '...'
+    });
+
+    // Mapeamento de room_type (inglês → português para Airtable)
+    const roomTypeMap = {
+      'living_room': 'Sala de estar + jantar',
+      'kitchen': 'Cozinha',
+      'bedroom': 'Quarto',
+      'kids_bedroom': 'Quarto infantil',
+      'baby_bedroom': 'Quarto infantil',
+      'outdoor': 'Área externa',
+      'home_office': 'Home Office'
+    };
+
+    const roomTypePt = roomTypeMap[room_type] || room_type;
+
+    // Configurar Airtable
+    Airtable.configure({
+      apiKey: process.env.AIRTABLE_API_KEY
+    });
+    const base = Airtable.base(process.env.AIRTABLE_BASE_ID);
+
+    // Preparar dados para Airtable (tabela Disapproved Images)
+    const recordData = {
+      client: [client_id],
+      invoice: invoice_id ? [invoice_id] : [],
+      workflow: 'SmartBanana',
+      input_img: input_image_url ? [{ url: input_image_url }] : [],
+      output_img: [{ url: output_image_url }],
+      style: [],
+      room_type: roomTypePt,
+      property_code: property_code || '',
+      user: user_id ? [user_id] : [],
+      disapproval_description: disapproval_description
+    };
+
+    console.log("📤 Criando registro na tabela Disapproved Images:", recordData);
+
+    // Criar registro na tabela Disapproved Images
+    const createdRecords = await base('Disapproved Images').create([
+      { fields: recordData }
+    ]);
+
+    if (createdRecords && createdRecords.length > 0) {
+      const record = createdRecords[0];
+      console.log(`✅ [POST /disapprove] Registro criado no Airtable: ${record.id}`);
+      
+      res.json({
+        success: true,
+        message: 'Imagem reprovada e salva com sucesso',
+        airtable_record_id: record.id,
+        data: {
+          room_type,
+          design_style,
+          quality_score,
+          client_name: client_name || client_email,
+          input_img: input_image_url,
+          output_img: output_image_url,
+          disapproval_description: disapproval_description
+        }
+      });
+    } else {
+      throw new Error('Falha ao criar registro no Airtable');
+    }
+
+  } catch (error) {
+    console.error("❌ [POST /disapprove] Erro:", error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Erro interno ao salvar reprovação'
+    });
+  }
+});
+
+// ===================================================================
 // 🧪 ROTA DE TESTE: Visualizar Prompts sem Processar Imagem
 // ===================================================================
 router.post('/imagen-staging/test-prompts', async (req, res) => {

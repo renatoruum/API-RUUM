@@ -45,7 +45,6 @@ GET /api/pixverse/status/:taskId
 ### Headers
 
 ```
-Authorization: Bearer YOUR_API_KEY
 Content-Type: application/json
 ```
 
@@ -63,7 +62,6 @@ Content-Type: application/json
 
 ```bash
 curl -X POST https://apiruum-562831020087.us-central1.run.app/api/pixverse/ruum-drop \
-  -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
     "imageEmpty": "https://storage.example.com/empty-living.jpg",
@@ -120,8 +118,7 @@ GET /api/pixverse/status/:taskId
 ### Exemplo
 
 ```bash
-curl -X GET https://apiruum-562831020087.us-central1.run.app/api/pixverse/status/pixverse_abc123xyz \
-  -H "Authorization: Bearer YOUR_API_KEY"
+curl -X GET https://apiruum-562831020087.us-central1.run.app/api/pixverse/status/pixverse_abc123xyz
 ```
 
 ---
@@ -246,7 +243,6 @@ const axios = require('axios');
 
 async function createMagicDropVideo(emptyImageUrl, furnishedImageUrl) {
   const API_URL = 'https://apiruum-562831020087.us-central1.run.app';
-  const headers = { 'Authorization': `Bearer ${process.env.RUUM_API_KEY}` };
   
   // 1. Inicia processamento
   console.log('🪄 Iniciando Magic Drop...');
@@ -258,8 +254,7 @@ async function createMagicDropVideo(emptyImageUrl, furnishedImageUrl) {
       duration: 5,
       aspectRatio: '16:9'
     },
-    { headers }
-  );
+    {
   
   const { taskId } = startResponse.data.data;
   console.log(`✅ Task iniciada: ${taskId}`);
@@ -274,7 +269,6 @@ async function createMagicDropVideo(emptyImageUrl, furnishedImageUrl) {
     const statusResponse = await axios.get(
       `${API_URL}/api/pixverse/status/${taskId}`,
       { headers }
-    );
     
     const { status, data, error, progress } = statusResponse.data;
     
@@ -403,7 +397,7 @@ processBatch(imagePairs);
 - **Tamanho máximo por imagem:** 10MB
 - **Resolução mínima:** 1024x1024
 - **Resolução máxima:** 4096x4096
-- **Concurrent tasks:** 3 por API key (pesado)
+- **Concurrent tasks:** 3 simultâneos (processamento pesado)
 - **Timeout:** 15 minutos por vídeo
 
 ---
@@ -544,4 +538,4 @@ sequenceDiagram
 
 ---
 
-**Dúvidas?** suporte@ruum.com.br
+**Dúvidas?** renato@ruum.com.br

@@ -1,14 +1,14 @@
-# 🏢 API Ruum - Documentação para Integração CRM
+# 🏢 API Ruum - Documentação Pública
 
 > **Versão:** 1.0  
 > **Data:** Fevereiro 2026  
-> **Público:** Parceiros CRM Imobiliário
+> **Público:** CRMs e Portais Imobiliários
 
 ---
 
 ## 📋 Visão Geral
 
-Esta documentação é destinada à integração da API Ruum com plataformas de CRM imobiliário. Nossa API oferece processamento automatizado de imagens e vídeos para marketing imobiliário, incluindo:
+Esta documentação é destinada à **integração externa** da API Ruum com plataformas de CRM e portais imobiliários. Nossa API oferece processamento automatizado de imagens e vídeos para marketing imobiliário:
 
 - **Virtual Staging** - Mobília virtual em ambientes vazios
 - **Vídeos Antes e Depois** - Comparação animada de ambientes
@@ -17,14 +17,20 @@ Esta documentação é destinada à integração da API Ruum com plataformas de 
 
 ---
 
-## 🎯 Diferenças para Integração CRM
+## 🎯 Como Funciona a Integração
 
-Esta integração possui características especiais:
+**Modelo simples e direto:**
 
-✅ **Processamento Automático** - Sem necessidade de aprovação manual  
-✅ **Retorno Direto** - URLs públicas dos arquivos processados  
-✅ **Sem Persistência** - Nada é salvo no Airtable da Ruum  
-✅ **Autonomia Total** - Vocês gerenciam o armazenamento e dados
+✅ **Você envia** a imagem/vídeo via POST  
+✅ **API processa** com IA  
+✅ **API retorna** URL pública do resultado  
+✅ **Você armazena** a URL no seu sistema  
+
+**Características:**
+- ✅ Sem autenticação
+- ✅ Sem necessidade de Airtable, Firebase ou qualquer outro serviço externo
+- ✅ Você gerencia 100% do armazenamento e dados dos seus clientes
+- ✅ Processamento automático e retorno direto
 
 ---
 
@@ -42,7 +48,6 @@ Esta integração possui características especiais:
 - [**VIDEO_MAGIC_DROP.md**](./VIDEO_MAGIC_DROP.md) - Animação de móveis caindo
 
 ### ⚙️ Referências Técnicas
-- [**AUTHENTICATION.md**](./AUTHENTICATION.md) - Autenticação e segurança
 - [**ERROR_CODES.md**](./ERROR_CODES.md) - Códigos de erro e troubleshooting
 - [**RATE_LIMITS.md**](./RATE_LIMITS.md) - Limites de uso e quotas
 
@@ -132,15 +137,14 @@ graph LR
 ## 🔒 Segurança
 
 - **HTTPS obrigatório** em todas as requisições
-- **API Key** via header `Authorization: Bearer YOUR_API_KEY`
-- **Rate limiting** aplicado por IP e API Key
 - **URLs públicas** com URLs assinadas (expiração configurável)
+- **Rate limiting** aplicado por IP
 
 ---
 
 ## 🆘 Suporte
 
-- **Email:** suporte@ruum.com.br
+- **Email:** renato@ruum.com.br
 - **Slack:** Canal dedicado ao parceiro
 - **Documentação:** Esta pasta
 - **Status da API:** https://status.ruum.com.br
